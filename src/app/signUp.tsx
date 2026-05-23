@@ -1,19 +1,44 @@
+import { useSignUp } from "@/api/hooks/useSignUp";
 import { AppButton } from "@/components/button";
+import { ErrorLoading } from "@/components/error";
 import { Input } from "@/components/input";
+import { Loading } from "@/components/loading";
 import { Title } from "@/components/Title";
 import { UnderlinedButton } from "@/components/underlined-text";
 
+import { yupResolver } from "@hookform/resolvers/yup";
 import React from "react";
 import { Controller, useForm } from "react-hook-form";
 import { StyleSheet, Text, View } from "react-native";
+import * as yup from "yup";
 
-type SignUpFormData = {
-  email: string;
-  password: string;
-  confirmPassword: string;
-};
+// Схема валидации
+const signUpSchema = yup.object({
+  email: yup
+    .string()
+    .email("Email must be a valid email address.")
+    .required("Email is required"),
+  password: yup
+    .string()
+    .required("Password is required")
+    .min(8, "Password must be at least 8 characters.")
+    .matches(/[A-Z]/, "Password must contain at least one uppercase letter.")
+    .matches(/[0-9]/, "Password must contain at least one number.")
+    .matches(
+      /[!@#$%^&*(),.?":{}|<>]/,
+      "Password must contain at least one special character.",
+    ),
+  confirmPassword: yup
+    .string()
+    .oneOf([yup.ref("password")], "Passwords must match")
+    .required("Confirm your password"),
+});
+
+type SignUpFormData = yup.InferType<typeof signUpSchema>;
 
 export default function SignUp() {
+  const { data, mutate, isPending, isError, isSuccess, error } = useSignUp();
+
   const {
     control,
     handleSubmit,
@@ -24,10 +49,11 @@ export default function SignUp() {
       password: "",
       confirmPassword: "",
     },
+    resolver: yupResolver(signUpSchema),
   });
 
   const onSubmit = (data: SignUpFormData) => {
-    console.log(data);
+    mutate(data);
   };
 
   return (
@@ -41,9 +67,6 @@ export default function SignUp() {
           <Controller
             control={control}
             name="email"
-            rules={{
-              required: "Email is required",
-            }}
             render={({ field: { onChange, value } }) => (
               <Input
                 placeholder="Email"
@@ -54,7 +77,6 @@ export default function SignUp() {
               />
             )}
           />
-
           {errors.email && (
             <Text style={styles.errorText}>{errors.email.message}</Text>
           )}
@@ -64,13 +86,6 @@ export default function SignUp() {
           <Controller
             control={control}
             name="password"
-            rules={{
-              required: "Password is required",
-              minLength: {
-                value: 6,
-                message: "Minimum 6 characters",
-              },
-            }}
             render={({ field: { onChange, value } }) => (
               <Input
                 placeholder="Password"
@@ -80,7 +95,6 @@ export default function SignUp() {
               />
             )}
           />
-
           {errors.password && (
             <Text style={styles.errorText}>{errors.password.message}</Text>
           )}
@@ -90,9 +104,6 @@ export default function SignUp() {
           <Controller
             control={control}
             name="confirmPassword"
-            rules={{
-              required: "Confirm your password",
-            }}
             render={({ field: { onChange, value } }) => (
               <Input
                 placeholder="Confirm Password"
@@ -102,7 +113,6 @@ export default function SignUp() {
               />
             )}
           />
-
           {errors.confirmPassword && (
             <Text style={styles.errorText}>
               {errors.confirmPassword.message}
@@ -110,6 +120,9 @@ export default function SignUp() {
           )}
         </View>
       </View>
+
+      {isPending && <Loading />}
+      {isError && <ErrorLoading>{error.Details.Errors.Email[0]}</ErrorLoading>}
 
       <AppButton
         containerStyle={{ marginTop: 27 }}
@@ -132,12 +145,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 42,
     justifyContent: "center",
   },
-
   inputsContainer: {
     gap: 36,
     marginBottom: 70,
   },
-
   errorText: {
     color: "#dc2626",
     fontSize: 13,

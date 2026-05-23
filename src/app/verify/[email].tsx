@@ -1,9 +1,11 @@
+import { useVerifyEmail } from "@/api/hooks/useVerifyEmail";
 import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
+import { Loading } from "@/components/loading";
 import { Title } from "@/components/Title";
 import { UnderlinedButton } from "@/components/underlined-text";
-import { useNavigation } from "expo-router";
+import { useLocalSearchParams, useNavigation } from "expo-router";
 
 import React from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -14,8 +16,12 @@ type VerifyEmailFormData = {
 };
 
 export default function VerifyEmail() {
+  const { mutate, isPending, isError, error } = useVerifyEmail();
+
+  const local = useLocalSearchParams();
+
   const navigation = useNavigation();
-  const email = "email@mail.ru";
+  const email = local.email as string;
   const {
     control,
     handleSubmit,
@@ -27,7 +33,7 @@ export default function VerifyEmail() {
   });
 
   const onSubmit = (data: VerifyEmailFormData) => {
-    console.log(data);
+    mutate({ email: email, token: data.verificationCode });
   };
 
   return (
@@ -65,7 +71,7 @@ export default function VerifyEmail() {
           )}
         </View>
       </View>
-
+      {isPending && <Loading />}
       <AppButton
         containerStyle={{ marginTop: 27 }}
         type="primary"
@@ -73,14 +79,6 @@ export default function VerifyEmail() {
       >
         Continue
       </AppButton>
-      <AppButton
-        containerStyle={{ marginTop: 15 }}
-        type="outline"
-        onPress={handleSubmit(onSubmit)}
-      >
-        Resend Code
-      </AppButton>
-
       <UnderlinedButton
         onPress={() => {
           navigation.goBack();
