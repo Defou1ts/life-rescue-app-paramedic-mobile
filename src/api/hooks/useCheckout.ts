@@ -7,7 +7,7 @@ const monthslyPriceId = "price_1RpuzoC1kCMVK5zzyvDmEdY5";
 import * as Linking from "expo-linking";
 
 const successUrl = Linking.createURL("/subscription/success");
-const cancelUrl = Linking.createURL("/subscription/cancel");
+const failureUrl = Linking.createURL("/subscription/cancel");
 
 export type CheckoutResponse = {
   url: string;
@@ -16,7 +16,7 @@ export type CheckoutResponse = {
 export const checkout = async (): Promise<CheckoutResponse> => {
   const res = await axiosInstance.post(
     `/subscriptions/checkout/${monthslyPriceId}`,
-    { cancelUrl: cancelUrl, successUrl: successUrl },
+    { failureUrl: failureUrl, successUrl: successUrl },
   );
   return res.data;
 };

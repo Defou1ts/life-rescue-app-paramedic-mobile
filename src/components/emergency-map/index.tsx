@@ -1,62 +1,99 @@
+import { useParamedicsNearby } from "@/api/hooks/useParamedicsNeaby";
 import * as Location from "expo-location";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import { WebView } from "react-native-webview";
 
-type Medic = {
+const USE_MOCK_LOCATION = false;
+
+const MOCK_LOCATION = {
+  latitude: 53.9023,
+  longitude: 27.5619,
+};
+
+type Coords = {
   latitude: number;
   longitude: number;
 };
 
-type Props = {
-  medics: Medic[];
-};
+export const EmergencyMap = () => {
+  const webViewRef = useRef<WebView>(null);
 
-export const EmergencyMap = ({ medics }: Props) => {
-  const [location, setLocation] =
-    useState<Location.LocationObjectCoords | null>(null);
+  const {
+    mutate: fetchParamedics,
+    data: medics,
+    isPending,
+  } = useParamedicsNearby();
 
   const [loading, setLoading] = useState(true);
+  const [userLocation, setUserLocation] = useState<Coords | null>(null);
 
   useEffect(() => {
-    getUserLocation();
+    initialize();
   }, []);
 
-  const getUserLocation = async () => {
+  const initialize = async () => {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
+      let coords: Coords;
 
-      if (status !== "granted") {
-        return;
+      /**
+       * =========================
+       * GEOLOCATION INITIALIZATION
+       * =========================
+       */
+
+      if (USE_MOCK_LOCATION) {
+        coords = MOCK_LOCATION;
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+
+        if (status !== "granted") {
+          // fallback если юзер запретил геолокацию
+          coords = MOCK_LOCATION;
+        } else {
+          const location = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+          });
+
+          coords = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          };
+        }
       }
 
-      const currentLocation = await Location.getCurrentPositionAsync({});
+      setUserLocation(coords);
 
-      setLocation(currentLocation.coords);
+      /**
+       * =========================
+       * FETCH PARAMEDICS
+       * =========================
+       */
+
+      fetchParamedics({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+      });
+    } catch (e) {
+      // fallback на Минск при любой ошибке
+      setUserLocation(MOCK_LOCATION);
+
+      fetchParamedics({
+        latitude: MOCK_LOCATION.latitude,
+        longitude: MOCK_LOCATION.longitude,
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const initialRegion = useMemo(() => {
-    if (!location) {
-      return {
-        latitude: 37.78825,
-        longitude: -122.4324,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      };
-    }
+  /**
+   * =========================
+   * LOADING STATE
+   * =========================
+   */
 
-    return {
-      latitude: location.latitude,
-      longitude: location.longitude,
-      latitudeDelta: 0.02,
-      longitudeDelta: 0.02,
-    };
-  }, [location]);
-
-  if (loading) {
+  if (loading || isPending || !userLocation || !medics) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" />
@@ -64,46 +101,117 @@ export const EmergencyMap = ({ medics }: Props) => {
     );
   }
 
-  return (
-    <MapView
-      provider={PROVIDER_GOOGLE}
-      style={styles.map}
-      initialRegion={initialRegion}
-      showsUserLocation
-      showsMyLocationButton
-    >
-      {location && (
-        <Marker
-          coordinate={{
-            latitude: location.latitude,
-            longitude: location.longitude,
-          }}
-          title="You"
-          pinColor="blue"
-        />
-      )}
+  /**
+   * =========================
+   * MAP MARKERS (JS INJECTION)
+   * =========================
+   */
 
-      {medics.map((medic) => (
-        <Marker
-          key={medic.latitude + medic.longitude}
-          coordinate={{
-            latitude: medic.latitude,
-            longitude: medic.longitude,
-          }}
-          title="Paramedic"
-          description="Nearby medic"
-          pinColor="red"
+  const markersJS = medics
+    .map(
+      (medic) => `
+        L.marker([${medic.latitude}, ${medic.longitude}])
+          .addTo(map)
+          .bindPopup('Paramedic');
+      `,
+    )
+    .join("\n");
+
+  /**
+   * =========================
+   * HTML MAP (LEAFLET)
+   * =========================
+   */
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet/dist/leaflet.css"
         />
-      ))}
-    </MapView>
+
+        <style>
+          html, body, #map {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div id="map"></div>
+
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+        <script>
+          const userLat = ${userLocation.latitude};
+          const userLng = ${userLocation.longitude};
+
+          const map = L.map('map',{
+  zoomControl: false
+}).setView(
+            [userLat, userLng],
+            14
+          );
+
+          L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            {
+              attribution: '© OpenStreetMap contributors'
+            }
+          ).addTo(map);
+
+          /**
+           * USER MARKER
+           */
+          const userMarker = L.marker([userLat, userLng])
+            .addTo(map)
+            .bindPopup('You')
+            .openPopup();
+
+          /**
+           * PARAMEDICS
+           */
+          ${markersJS}
+        </script>
+      </body>
+    </html>
+  `;
+
+  /**
+   * =========================
+   * RENDER
+   * =========================
+   */
+
+  return (
+    <View style={styles.container}>
+      <WebView
+        ref={webViewRef}
+        originWhitelist={["*"]}
+        source={{ html }}
+        style={styles.map}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  map: {
+  container: {
     width: 250,
     height: 188,
     borderRadius: 24,
+    overflow: "hidden",
+  },
+
+  map: {
+    flex: 1,
   },
 
   loader: {

@@ -17,13 +17,17 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "permissions": ["ACCESS_FINE_LOCATION"],
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ],
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_API_KEY"
+          "apiKey": "AIzaSyCB78kYlxdmW8tVT704Bj4KFYsPIjvptgY"
         }
-      }
+      },
+      "package": "com.anonymous.liferescueapp"
     },
     "web": {
       "output": "static",
@@ -42,7 +46,10 @@
         }
       ],
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

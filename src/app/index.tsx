@@ -1,25 +1,16 @@
 import { AppButton } from "@/components/button";
+import { LoadingScreen } from "@/components/loading-screen";
 import { useAuth } from "@/hooks/useAuth";
 import { Image } from "expo-image";
 import { Redirect, useNavigation } from "expo-router";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 const Logo = require("@/assets/images/logo.png");
 export default function Index() {
   const { isAuthorized, isLoading } = useAuth();
   const navigation = useNavigation();
 
   if (isLoading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   if (isAuthorized) {

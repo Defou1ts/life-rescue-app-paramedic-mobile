@@ -1,7 +1,7 @@
 import { queryClient } from "@/config/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
-
+import "react-native-gesture-handler";
 export const ROOT_SCREEN_NAMES = {
   INDEX: "index",
   SIGN_IN: "signIn",

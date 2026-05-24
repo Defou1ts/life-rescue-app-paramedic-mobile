@@ -1,13 +1,16 @@
 import { useCheckout } from "@/api/hooks/useCheckout";
 import { useHasSubscription } from "@/api/hooks/useHasSubcription";
+import { useParamedicsNearby } from "@/api/hooks/useParamedicsNeaby";
 import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
 import { EmergencyMap } from "@/components/emergency-map";
 import { Loading } from "@/components/loading";
+import { LoadingScreen } from "@/components/loading-screen";
 import { Title } from "@/components/Title";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
   Pressable,
@@ -67,12 +70,14 @@ type FormValues = {
 };
 
 export default function Home() {
-  const { data: hasSubcription, isLoading: isHasSubscriptionLoading } =
+  const { data: subscriptionData, isLoading: isHasSubscriptionLoading } =
     useHasSubscription();
+
+  const { data: paramedicsNearby, isPending: isLoadingParamedicsNearby } =
+    useParamedicsNearby();
 
   const { mutate, isPending } = useCheckout();
 
-  const hasSubscribe = false;
   const activeEmergencyRequest = false;
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -87,6 +92,9 @@ export default function Home() {
 
   const values = watch();
 
+  if (isHasSubscriptionLoading || !subscriptionData) {
+    return <LoadingScreen />;
+  }
   const toggleMulti = (field: "symptoms" | "conditions", id: string) => {
     const current = values[field] || [];
 
@@ -101,7 +109,6 @@ export default function Home() {
   };
 
   const onSave = (data: FormValues) => {
-    console.log("UPDATED_EMERGENCY_DATA", data);
     setModalVisible(false);
 
     // API:
@@ -119,18 +126,20 @@ export default function Home() {
             <AppText>
               {activeEmergencyRequest
                 ? "Arriving in 5-8 min"
-                : "Medics nearby: 7"}
+                : isLoadingParamedicsNearby 
+                  ? <ActivityIndicator size="small" color="#0D9488" />
+                  : `${paramedicsNearby?.length || 0} Medics nearby`}
             </AppText>
           </View>
 
           <View style={styles.imageContainer}>
-            <EmergencyMap medics={MEDICS} />
+            <EmergencyMap />
           </View>
         </View>
       </View>
 
       {/* ACTIVE REQUEST */}
-      {hasSubscribe ? (
+      {subscriptionData?.hasActiveSubscription ? (
         activeEmergencyRequest ? (
           <View>
             <AppButton
