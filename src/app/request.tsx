@@ -1,235 +1,328 @@
 import { AppButton } from "@/components/button";
 import { Title } from "@/components/Title";
-import { useFocusEffect, useNavigation } from "expo-router";
-import React, { useCallback, useMemo, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+
+import { axiosInstance } from "@/api/axiosInstance";
 import {
+  CreateEmergencyRequest,
+  useCreateEmergency,
+} from "@/api/hooks/useCreateEmergency";
+import { useGetAnswersByQuestionId } from "@/api/hooks/useGetAnswersByQuestionId";
+import { useGetRootEmergencyQuestion } from "@/api/hooks/useGetRootEmergencyQuestion";
+
+import * as Location from "expo-location";
+import { router, useNavigation } from "expo-router";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { Question } from "@/api/hooks/useGetQuestionByAnswerId";
+import {
+  ActivityIndicator,
+  Alert,
   BackHandler,
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
-type Option = {
-  id: string;
-  name: string;
+type HistoryItem = {
+  question: Question;
+  selectedAnswerId: string;
 };
-
-type FormValues = {
-  mainIssue: string | null;
-  symptoms: string[];
-  conditions: string[];
-};
-
-/**
- * Пока моканные данные.
- * Подготовлено под получение с сервера:
- * - можно заменить на API response
- * - структура уже нормализована
- */
-const MAIN_ISSUES: Option[] = [
-  { id: "injury_trauma", name: "Injury or Trauma" },
-  { id: "difficulty_breathing", name: "Difficulty Breathing" },
-  { id: "allergic_reaction", name: "Allergic Reaction" },
-  { id: "chest_pain", name: "Chest Pain / Heart Issue" },
-  { id: "unconscious", name: "Unconscious" },
-  { id: "other", name: "Other" },
-];
-
-const SYMPTOMS: Option[] = [
-  { id: "heavy_bleeding", name: "Heavy bleeding" },
-  { id: "severe_pain", name: "Severe pain" },
-  { id: "difficulty_breathing", name: "Difficulty breathing" },
-  { id: "dizziness", name: "Dizziness or confusion" },
-  { id: "numbness", name: "Numbness or weakness" },
-];
-
-const CONDITIONS: Option[] = [
-  { id: "drug_allergies", name: "Drug Allergies" },
-  { id: "heart_disease", name: "Heart Disease" },
-  { id: "diabetes", name: "Diabetes" },
-  { id: "asthma", name: "Asthma or Lung Disease" },
-  { id: "pregnancy", name: "Pregnancy" },
-  { id: "none", name: "None or Unknown" },
-];
-
-const STEPS = [
-  {
-    title: "What is the main issue?",
-    field: "mainIssue",
-    options: MAIN_ISSUES,
-    multiple: false,
-  },
-  {
-    title: "Are any of these symptoms present?",
-    field: "symptoms",
-    options: SYMPTOMS,
-    multiple: true,
-  },
-  {
-    title: "Any pre-existing conditions?",
-    field: "conditions",
-    options: CONDITIONS,
-    multiple: true,
-  },
-] as const;
 
 export default function Request() {
   const navigation = useNavigation();
 
-  const [step, setStep] = useState(0);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
 
-  const { control, handleSubmit, watch } = useForm<FormValues>({
-    defaultValues: {
-      mainIssue: null,
-      symptoms: [],
-      conditions: [],
-    },
-  });
+  const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
 
-  const currentStep = STEPS[step];
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  const values = watch();
+  const [location, setLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
-  const isNextDisabled = useMemo(() => {
-    if (currentStep.field === "mainIssue") {
-      return !values.mainIssue;
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  const [isCreatingEmergency, setIsCreatingEmergency] = useState(false);
+
+  const {
+    data: rootQuestion,
+    isLoading: isRootLoading,
+    error: rootError,
+  } = useGetRootEmergencyQuestion();
+
+  const { mutateAsync: createEmergency } = useCreateEmergency();
+  console.log(currentQuestion);
+  /**
+   * init root question
+   */
+  useEffect(() => {
+    if (rootQuestion) {
+      setCurrentQuestion(rootQuestion);
     }
+  }, [rootQuestion]);
 
-    return false;
-  }, [currentStep.field, values.mainIssue]);
+  /**
+   * get location
+   */
+  useEffect(() => {
+    const loadLocation = async () => {
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
 
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => {
-        if (step > 0) {
-          setStep((prev) => prev - 1);
-
-          return true;
+        if (permission.status !== "granted") {
+          return;
         }
 
-        navigation.goBack();
+        const currentLocation = await Location.getCurrentPositionAsync({});
 
-        return true;
-      };
-
-      const subscription = BackHandler.addEventListener(
-        "hardwareBackPress",
-        onBackPress,
-      );
-
-      return () => subscription.remove();
-    }, [navigation, step]),
-  );
-
-  const onSubmit = (data: FormValues) => {
-    /**
-     * Подготовлено под отправку на сервер
-     *
-     * Можно будет:
-     * await api.requestHelp(data)
-     */
-
-    const payload = {
-      mainIssue: data.mainIssue,
-      symptoms: data.symptoms,
-      conditions: data.conditions,
-      createdAt: new Date().toISOString(),
+        setLocation({
+          latitude: currentLocation.coords.latitude,
+          longitude: currentLocation.coords.longitude,
+        });
+      } catch (error) {
+        console.log("LOCATION_ERROR", error);
+      }
     };
 
-    console.log("REQUEST_HELP_PAYLOAD", payload);
+    loadLocation();
+  }, []);
 
-    navigation.navigate("home");
-  };
+  /**
+   * answers query
+   */
+  const {
+    data: answers,
+    isLoading: isAnswersLoading,
+    error: answersError,
+  } = useGetAnswersByQuestionId(currentQuestion?.id ?? "", {
+    enabled: !!currentQuestion?.id,
+  });
 
-  const handleNext = () => {
-    if (step < STEPS.length - 1) {
-      setStep((prev) => prev + 1);
+  /**
+   * android back handler
+   */
+  useEffect(() => {
+    const onBackPress = () => {
+      if (history.length > 0) {
+        const previous = history[history.length - 1];
+
+        setCurrentQuestion(previous.question);
+
+        setSelectedAnswerId(previous.selectedAnswerId);
+
+        setHistory((prev) => prev.slice(0, -1));
+
+        return true;
+      }
+
+      navigation.goBack();
+
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress,
+    );
+
+    return () => subscription.remove();
+  }, [history]);
+
+  const selectedAnswer = useMemo(() => {
+    return answers?.find((answer) => answer.id === selectedAnswerId);
+  }, [answers, selectedAnswerId]);
+
+  const handleCreateEmergency = async () => {
+    if (!currentQuestion || !selectedAnswerId || isNavigating) {
+      return;
+    }
+    try {
+      setIsCreatingEmergency(true);
+
+      const questionIds = [
+        ...history.map((item) => item.question.id),
+        currentQuestion.id,
+      ];
+
+      const answerOptionsIds = [
+        ...history.map((item) => item.selectedAnswerId),
+        selectedAnswerId,
+      ];
+
+      const payload: CreateEmergencyRequest = {
+        initiatorLatitude: location?.latitude ?? 0,
+
+        initiatorLongitude: location?.longitude ?? 0,
+
+        questionIds,
+        answerOptionsIds: answerOptionsIds ?? [],
+      };
+
+      await createEmergency(payload);
+
+      Alert.alert("Emergency Created", "Help request successfully sent");
+
+      router.replace("/(tabs)");
+    } catch (createError) {
+      console.log("CREATE_EMERGENCY_ERROR", createError);
+
+      Alert.alert("Error", "Failed to create emergency request");
+    } finally {
+      setIsCreatingEmergency(false);
     }
   };
+
+  const handleNext = useCallback(async () => {
+    if (!currentQuestion || !selectedAnswerId || isNavigating) {
+      return;
+    }
+
+    try {
+      setIsNavigating(true);
+
+      const updatedHistory = [
+        ...history,
+        {
+          question: currentQuestion,
+          selectedAnswerId,
+        },
+      ];
+
+      /**
+       * try get next question
+       */
+      const response = await axiosInstance.get<Question>(
+        `/symptom/questions/${selectedAnswerId}`,
+      );
+
+      setHistory(updatedHistory);
+
+      setCurrentQuestion(response.data);
+
+      setSelectedAnswerId(null);
+    } catch (error: any) {
+      /**
+       * 404 = end of tree
+       */
+      if (error?.response?.status === 404) {
+        await handleCreateEmergency();
+        return;
+      }
+
+      console.log("NEXT_QUESTION_ERROR", error);
+
+      Alert.alert("Error", "Failed to load next question");
+    } finally {
+      setIsNavigating(false);
+    }
+  }, [
+    currentQuestion,
+    selectedAnswerId,
+    history,
+    location,
+    createEmergency,
+    isNavigating,
+  ]);
+
+  /**
+   * loading states
+   */
+  if (isRootLoading || !currentQuestion || isAnswersLoading) {
+    return (
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#0D9488" />
+      </View>
+    );
+  }
+
+  /**
+   * error states
+   */
+  if (rootError || answersError) {
+    return (
+      <View style={styles.loaderContainer}>
+        <Text style={styles.errorText}>
+          Failed to load emergency questionnaire
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Title>{currentStep.title}</Title>
+      <Title>{currentQuestion.text}</Title>
 
-      <Controller
-        control={control}
-        name={currentStep.field}
-        render={({ field: { value, onChange } }) => {
+      <FlatList
+        data={answers ?? []}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{
+          paddingBottom: 30,
+        }}
+        renderItem={({ item }) => {
+          const isSelected = item.id === selectedAnswerId;
+
           return (
-            <FlatList
-              data={currentStep.options}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={{ paddingBottom: 20 }}
-              renderItem={({ item }) => {
-                const isSelected = currentStep.multiple
-                  ? Array.isArray(value) && value.includes(item.id)
-                  : value === item.id;
+            <View style={styles.cardWrapper}>
+              <Pressable
+                onPress={() => setSelectedAnswerId(item.id)}
+                style={[styles.card, isSelected && styles.selectedCard]}
+              >
+                <Text
+                  style={[
+                    styles.cardText,
+                    isSelected && styles.selectedCardText,
+                  ]}
+                >
+                  {item.text}
+                </Text>
 
-                const handlePress = () => {
-                  if (currentStep.multiple) {
-                    const currentArray = Array.isArray(value) ? value : [];
+                {!!item.instructionText && (
+                  <Text
+                    style={[
+                      styles.instructionText,
+                      isSelected && styles.selectedInstructionText,
+                    ]}
+                  >
+                    {item.instructionText}
+                  </Text>
+                )}
 
-                    if (currentArray.includes(item.id)) {
-                      onChange(
-                        currentArray.filter((selected) => selected !== item.id),
-                      );
-                    } else {
-                      onChange([...currentArray, item.id]);
-                    }
-
-                    return;
-                  }
-
-                  onChange(item.id);
-                };
-
-                return (
-                  <View style={styles.cardWrapper}>
-                    <Pressable
-                      onPress={handlePress}
-                      style={[styles.card, isSelected && styles.selectedCard]}
-                    >
-                      <Text
-                        style={[
-                          styles.cardText,
-                          isSelected && styles.selectedCardText,
-                        ]}
-                      >
-                        {item.name}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              }}
-            />
+                {!!item.animationKey?.base64Content && (
+                  <Image
+                    source={{
+                      uri: `data:image/png;base64,${item.animationKey.base64Content}`,
+                    }}
+                    style={styles.image}
+                    resizeMode="contain"
+                  />
+                )}
+              </Pressable>
+            </View>
           );
         }}
       />
 
       <View style={styles.buttonsWrapper}>
-        {step !== STEPS.length - 1 && (
-          <AppButton
-            type="primary"
-            disabled={isNextDisabled}
-            onPress={handleNext}
-            containerStyle={{
-              marginBottom: 17,
-              marginTop: 40,
-            }}
-          >
-            Next
-          </AppButton>
-        )}
-
         <AppButton
           type="primary"
-          onPress={handleSubmit(onSubmit)}
+          disabled={!selectedAnswerId || isNavigating || isCreatingEmergency}
+          onPress={handleNext}
           containerStyle={{
-            backgroundColor: "#F59E0B",
+            marginTop: 20,
           }}
+        >
+          {isCreatingEmergency ? "Creating..." : "Continue"}
+        </AppButton>
+        <AppButton
+          onPress={handleCreateEmergency}
+          containerStyle={{ marginTop: 20, backgroundColor: " #F59E0B" }}
+          type="primary"
         >
           Request Help
         </AppButton>
@@ -245,19 +338,44 @@ export const styles = StyleSheet.create({
     paddingVertical: 70,
   },
 
+  loaderContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 30,
+  },
+
+  errorText: {
+    fontSize: 18,
+    textAlign: "center",
+    color: "red",
+  },
+
+  cardWrapper: {
+    paddingHorizontal: 37,
+    marginVertical: 12,
+  },
+
   card: {
     paddingVertical: 22,
+    paddingHorizontal: 20,
+
     minHeight: 71,
+
     alignItems: "center",
     justifyContent: "center",
+
     backgroundColor: "#EBF1F5",
-    borderRadius: 250,
+
+    borderRadius: 40,
 
     shadowColor: "#000",
+
     shadowOffset: {
       width: 4,
       height: 4,
     },
+
     shadowOpacity: 0.25,
     shadowRadius: 10,
 
@@ -268,23 +386,36 @@ export const styles = StyleSheet.create({
     backgroundColor: "#0D9488",
   },
 
-  buttonsWrapper: {
-    paddingHorizontal: 85,
-  },
-
-  cardWrapper: {
-    paddingHorizontal: 37,
-    marginVertical: 15,
-  },
-
   cardText: {
     fontFamily: "Inter",
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: "400",
     color: "#0D9488",
+    textAlign: "center",
   },
 
   selectedCardText: {
     color: "#FFFFFF",
+  },
+
+  instructionText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+  },
+
+  selectedInstructionText: {
+    color: "#E2E8F0",
+  },
+
+  image: {
+    width: 150,
+    height: 150,
+    marginTop: 15,
+  },
+
+  buttonsWrapper: {
+    paddingHorizontal: 85,
   },
 });

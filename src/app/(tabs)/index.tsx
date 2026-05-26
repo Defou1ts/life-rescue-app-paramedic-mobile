@@ -1,4 +1,10 @@
+import { axiosInstance } from "@/api/axiosInstance";
+import { useRateEmergency } from "@/api/hooks/RateEmergencyRequest";
 import { useCheckout } from "@/api/hooks/useCheckout";
+import { useGetActiveEmergencyRequest } from "@/api/hooks/useGetActiveEmergencyRequest";
+import { useGetAnswersByQuestionId } from "@/api/hooks/useGetAnswersByQuestionId";
+import { Question } from "@/api/hooks/useGetQuestionByAnswerId";
+import { useGetRootEmergencyQuestion } from "@/api/hooks/useGetRootEmergencyQuestion";
 import { useHasSubscription } from "@/api/hooks/useHasSubcription";
 import { useParamedicsNearby } from "@/api/hooks/useParamedicsNeaby";
 import { AppText } from "@/components/app-text";
@@ -7,7 +13,11 @@ import { EmergencyMap } from "@/components/emergency-map";
 import { Loading } from "@/components/loading";
 import { LoadingScreen } from "@/components/loading-screen";
 import { Title } from "@/components/Title";
-import React, { useState } from "react";
+import { signalRService } from "@/services/signalr";
+import { extractEmergencySelections } from "@/utils/emergency";
+import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
+import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   ActivityIndicator,
@@ -16,6 +26,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
@@ -76,9 +87,96 @@ export default function Home() {
   const { data: paramedicsNearby, isPending: isLoadingParamedicsNearby } =
     useParamedicsNearby();
 
-  const { mutate, isPending } = useCheckout();
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
 
-  const activeEmergencyRequest = false;
+  const [rating, setRating] = useState(0);
+
+  const [feedback, setFeedback] = useState("");
+
+  const [finishedEmergencyId, setFinishedEmergencyId] = useState<string | null>(
+    null,
+  );
+
+  const { mutateAsync: rateEmergency, isPending: isRatingLoading } =
+    useRateEmergency();
+
+  useEffect(() => {
+    signalRService.onReceiveFinishedEmergency = (message) => {
+      /**
+       * message:
+       * Emergency 019e65b7-e1a2-7801-ba3a-08b07a08c4eb finished
+       */
+
+      const match = message.match(/Emergency\s(.+)\sfinished/);
+
+      const emergencyId = match?.[1];
+
+      if (!emergencyId) {
+        return;
+      }
+
+      setFinishedEmergencyId(emergencyId);
+
+      setRatingModalVisible(true);
+    };
+
+    return () => {
+      signalRService.onReceiveFinishedEmergency = null;
+    };
+  }, []);
+
+  const { data: rootEmergencyQuestion } = useGetRootEmergencyQuestion();
+  const sheetRef = useRef<BottomSheet>(null);
+  const {
+    data: activeEmergencyRequest,
+    isPending: isLoadingActiveEmergencyRequest,
+  } = useGetActiveEmergencyRequest();
+
+  console.log(activeEmergencyRequest);
+
+  const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null);
+
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+
+  const [history, setHistory] = useState<
+    {
+      question: Question;
+      answerId: string;
+    }[]
+  >([]);
+
+  const { data: answers, isLoading: isLoadingAnswers } =
+    useGetAnswersByQuestionId(currentQuestion?.id ?? "", {
+      enabled: !!currentQuestion?.id,
+    });
+
+  const handleRateEmergency = async () => {
+    if (!finishedEmergencyId || !rating) {
+      return;
+    }
+
+    try {
+      await rateEmergency({
+        emergencyId: finishedEmergencyId,
+
+        feedBack: feedback,
+
+        rate: rating,
+      });
+
+      setRatingModalVisible(false);
+
+      setRating(0);
+
+      setFeedback("");
+
+      setFinishedEmergencyId(null);
+    } catch (error) {
+      console.log("RATE_EMERGENCY_ERROR", error);
+    }
+  };
+
+  const { mutate, isPending } = useCheckout();
 
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -92,7 +190,11 @@ export default function Home() {
 
   const values = watch();
 
-  if (isHasSubscriptionLoading || !subscriptionData) {
+  if (
+    isHasSubscriptionLoading ||
+    !subscriptionData ||
+    isLoadingActiveEmergencyRequest
+  ) {
     return <LoadingScreen />;
   }
   const toggleMulti = (field: "symptoms" | "conditions", id: string) => {
@@ -124,11 +226,13 @@ export default function Home() {
             <View style={styles.medics} />
 
             <AppText>
-              {activeEmergencyRequest
-                ? "Arriving in 5-8 min"
-                : isLoadingParamedicsNearby 
-                  ? <ActivityIndicator size="small" color="#0D9488" />
-                  : `${paramedicsNearby?.length || 0} Medics nearby`}
+              {activeEmergencyRequest ? (
+                "Arriving in 5-8 min"
+              ) : isLoadingParamedicsNearby ? (
+                <ActivityIndicator size="small" color="#0D9488" />
+              ) : (
+                `${paramedicsNearby?.length || 0} Medics nearby`
+              )}
             </AppText>
           </View>
 
@@ -145,21 +249,207 @@ export default function Home() {
             <AppButton
               type="outline"
               containerStyle={{ marginTop: 27 }}
-              onPress={() => setModalVisible(true)}
+              onPress={() => {
+                /**
+                 * existing symptom tree
+                 */
+                const existingRoot = activeEmergencyRequest?.symptomTree?.[0];
+
+                if (existingRoot) {
+                  setCurrentQuestion({
+                    id: existingRoot.questionId,
+                    text: existingRoot.questionText,
+                    questionType: "Single",
+                    parentAnswerId: "",
+                  });
+
+                  setHistory([]);
+
+                  setSelectedAnswerId(null);
+
+                  sheetRef.current?.expand();
+
+                  return;
+                }
+
+                /**
+                 * empty symptom tree
+                 * start questionnaire from scratch
+                 */
+                if (rootEmergencyQuestion) {
+                  setCurrentQuestion(rootEmergencyQuestion);
+
+                  setHistory([]);
+
+                  setSelectedAnswerId(null);
+
+                  sheetRef.current?.expand();
+                }
+              }}
             >
               Update Symptoms
             </AppButton>
-
-            <AppButton
-              type="outline"
-              textStyle={{ color: "#F59E0B" }}
-              containerStyle={{
-                marginTop: 27,
-                borderColor: "#F59E0B",
+            <BottomSheet
+              ref={sheetRef}
+              index={-1}
+              snapPoints={["70%", "95%"]}
+              enablePanDownToClose
+              backgroundStyle={{
+                borderTopLeftRadius: 40,
+                borderTopRightRadius: 40,
+                backgroundColor: "#F8FAFC",
+              }}
+              handleIndicatorStyle={{
+                backgroundColor: "#CBD5E1",
+                width: 80,
               }}
             >
-              Cancel Request
-            </AppButton>
+              <BottomSheetView style={styles.sheetContainer}>
+                {/* HEADER */}
+                <View style={styles.sheetHeader}>
+                  {history.length > 0 ? (
+                    <Pressable
+                      onPress={() => {
+                        const previous = history[history.length - 1];
+
+                        setCurrentQuestion(previous.question);
+
+                        setSelectedAnswerId(previous.answerId);
+
+                        setHistory((prev) => prev.slice(0, -1));
+                      }}
+                    >
+                      <Text style={styles.backButton}>↩</Text>
+                    </Pressable>
+                  ) : (
+                    <View style={{ width: 24 }} />
+                  )}
+
+                  <Text style={styles.sheetTitle}>{currentQuestion?.text}</Text>
+
+                  <Pressable onPress={() => sheetRef.current?.close()}>
+                    <Text style={styles.closeButton}>✕</Text>
+                  </Pressable>
+                </View>
+
+                {/* ANSWERS */}
+                <FlatList
+                  data={answers ?? []}
+                  keyExtractor={(item) => item.id}
+                  contentContainerStyle={{
+                    paddingBottom: 40,
+                  }}
+                  renderItem={({ item }) => {
+                    const isSelected = selectedAnswerId === item.id;
+
+                    return (
+                      <Pressable
+                        onPress={() => setSelectedAnswerId(item.id)}
+                        style={[
+                          styles.answerPill,
+                          isSelected && styles.answerPillSelected,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.answerText,
+                            isSelected && styles.answerTextSelected,
+                          ]}
+                        >
+                          {item.text}
+                        </Text>
+                      </Pressable>
+                    );
+                  }}
+                />
+
+                <AppButton
+                  disabled={!selectedAnswerId}
+                  type="primary"
+                  onPress={async () => {
+                    if (!selectedAnswerId || !currentQuestion) {
+                      return;
+                    }
+
+                    try {
+                      const updatedHistory = [
+                        ...history,
+                        {
+                          question: currentQuestion,
+                          answerId: selectedAnswerId,
+                        },
+                      ];
+
+                      const response = await axiosInstance.get<Question>(
+                        `/symptom/questions/${selectedAnswerId}`,
+                      );
+
+                      setHistory(updatedHistory);
+
+                      setCurrentQuestion(response.data);
+
+                      setSelectedAnswerId(null);
+                    } catch (error: any) {
+                      /**
+                       * END OF TREE
+                       */
+                      if (error?.response?.status === 404) {
+                        const hasExistingTree =
+                          activeEmergencyRequest?.symptomTree?.length;
+
+                        const existingSelections = hasExistingTree
+                          ? extractEmergencySelections(activeEmergencyRequest!)
+                          : {
+                              questionIds: [],
+                              answerIds: [],
+                            };
+
+                        const updatedQuestionIds = [
+                          ...existingSelections.questionIds,
+
+                          ...history.map((item) => item.question.id),
+
+                          currentQuestion.id,
+                        ];
+
+                        const updatedAnswerIds = [
+                          ...existingSelections.answerIds,
+
+                          ...history.map((item) => item.answerId),
+
+                          selectedAnswerId,
+                        ];
+
+                        await signalRService.sendEmergencyUpdate({
+                          initiatorLocation: {
+                            latitude:
+                              activeEmergencyRequest.initiatorLocation.latitude,
+
+                            longitude:
+                              activeEmergencyRequest.initiatorLocation
+                                .longitude,
+                          },
+
+                          symptomQuestionsIds: updatedQuestionIds,
+
+                          symptomAnswerOptionsIds: updatedAnswerIds,
+                        });
+
+                        sheetRef.current?.close();
+
+                        return;
+                      }
+                    }
+                  }}
+                  containerStyle={{
+                    marginTop: 10,
+                    marginBottom: 20,
+                  }}
+                >
+                  Update
+                </AppButton>
+              </BottomSheetView>
+            </BottomSheet>
           </View>
         ) : (
           <View>
@@ -167,7 +457,11 @@ export default function Home() {
               Recent Requests
             </AppButton>
 
-            <AppButton containerStyle={{ marginTop: 27 }} type="outline">
+            <AppButton
+              onPress={() => router.navigate("/request")}
+              containerStyle={{ marginTop: 27 }}
+              type="outline"
+            >
               Emergency Help
             </AppButton>
           </View>
@@ -198,104 +492,56 @@ export default function Home() {
       )}
 
       {/* MODAL */}
-      <Modal visible={modalVisible} animationType="slide">
-        <View style={styles.modal}>
-          <Pressable
-            onPress={() => setModalVisible(false)}
-            style={styles.closeIcon}
-          >
-            <Text style={styles.closeText}>✕</Text>
-          </Pressable>
-          <Title>Update Symptoms</Title>
+      <Modal visible={ratingModalVisible} transparent animationType="fade">
+        <View style={styles.ratingOverlay}>
+          <View style={styles.ratingModal}>
+            <Pressable
+              style={styles.ratingCloseButton}
+              onPress={() => setRatingModalVisible(false)}
+            >
+              <Text style={styles.ratingCloseText}>✕</Text>
+            </Pressable>
 
-          {/* MAIN ISSUE */}
-          <Text style={styles.sectionTitle}>Main Issue</Text>
+            <Text style={styles.ratingTitle}>Rate Your{"\n"}Experience</Text>
 
-          <FlatList
-            data={MAIN_ISSUES}
-            keyExtractor={(i) => i.id}
-            renderItem={({ item }) => (
-              <Pressable
-                onPress={() => setValue("mainIssue", item.id)}
-                style={[
-                  styles.option,
-                  values.mainIssue === item.id && styles.selected,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    values.mainIssue === item.id && styles.optionTextSelected,
-                  ]}
-                >
-                  {item.name}
-                </Text>
-              </Pressable>
-            )}
-          />
+            <View style={styles.ratingCard}>
+              <View style={styles.starsContainer}>
+                {[1, 2, 3, 4, 5].map((star) => {
+                  const selected = star <= rating;
 
-          {/* SYMPTOMS */}
-          <Text style={styles.sectionTitle}>Symptoms</Text>
+                  return (
+                    <Pressable key={star} onPress={() => setRating(star)}>
+                      <Text
+                        style={[styles.star, selected && styles.selectedStar]}
+                      >
+                        ★
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
 
-          <FlatList
-            data={SYMPTOMS}
-            keyExtractor={(i) => i.id}
-            renderItem={({ item }) => {
-              const selected = values.symptoms.includes(item.id);
+              <TextInput
+                value={feedback}
+                onChangeText={setFeedback}
+                placeholder="Share your thoughts..."
+                placeholderTextColor="#6B7280"
+                multiline
+                style={styles.feedbackInput}
+              />
+            </View>
 
-              return (
-                <Pressable
-                  onPress={() => toggleMulti("symptoms", item.id)}
-                  style={[styles.option, selected && styles.selected]}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      selected && styles.optionTextSelected,
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-
-          {/* CONDITIONS */}
-          <Text style={styles.sectionTitle}>Conditions</Text>
-
-          <FlatList
-            data={CONDITIONS}
-            keyExtractor={(i) => i.id}
-            renderItem={({ item }) => {
-              const selected = values.conditions.includes(item.id);
-
-              return (
-                <Pressable
-                  onPress={() => toggleMulti("conditions", item.id)}
-                  style={[styles.option, selected && styles.selected]}
-                >
-                  <Text
-                    style={[
-                      styles.optionText,
-                      selected && styles.optionTextSelected,
-                    ]}
-                  >
-                    {item.name}
-                  </Text>
-                </Pressable>
-              );
-            }}
-          />
-
-          {/* ACTIONS */}
-          <AppButton
-            type="primary"
-            containerStyle={{ marginTop: 20, marginBottom: 20 }}
-            onPress={handleSubmit(onSave)}
-          >
-            Update
-          </AppButton>
+            <AppButton
+              type="primary"
+              disabled={!rating || isRatingLoading}
+              onPress={handleRateEmergency}
+              containerStyle={{
+                marginTop: 35,
+              }}
+            >
+              Submit
+            </AppButton>
+          </View>
         </View>
       </Modal>
     </View>
@@ -416,5 +662,188 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#0D9488",
+  },
+  sheetContainer: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 10,
+  },
+
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 25,
+  },
+
+  sheetTitle: {
+    fontSize: 28,
+    fontFamily: "Inter",
+    fontWeight: "500",
+    color: "#0D9488",
+    flex: 1,
+    textAlign: "center",
+  },
+
+  closeButton: {
+    fontSize: 28,
+    color: "#0D9488",
+  },
+
+  backButton: {
+    fontSize: 28,
+    color: "#0D9488",
+  },
+
+  answerPill: {
+    backgroundColor: "#EBF1F5",
+
+    borderRadius: 28,
+
+    paddingVertical: 18,
+    paddingHorizontal: 20,
+
+    marginBottom: 14,
+
+    shadowColor: "#000",
+
+    shadowOffset: {
+      width: 2,
+      height: 2,
+    },
+
+    shadowOpacity: 0.12,
+    shadowRadius: 5,
+
+    elevation: 3,
+  },
+
+  answerPillSelected: {
+    backgroundColor: "#CDE7E5",
+  },
+
+  answerText: {
+    color: "#0D9488",
+    fontSize: 24,
+    fontFamily: "Inter",
+    fontWeight: "300",
+  },
+
+  answerTextSelected: {
+    color: "#0D9488",
+  },
+  ratingOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.25)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+
+  ratingModal: {
+    width: "100%",
+
+    backgroundColor: "#F1F5F9",
+
+    borderRadius: 40,
+
+    paddingHorizontal: 28,
+
+    paddingTop: 28,
+
+    paddingBottom: 40,
+
+    alignItems: "center",
+  },
+
+  ratingCloseButton: {
+    position: "absolute",
+
+    right: 20,
+
+    top: 20,
+
+    zIndex: 5,
+  },
+
+  ratingCloseText: {
+    fontSize: 36,
+
+    color: "#0D9488",
+  },
+
+  ratingTitle: {
+    fontSize: 48,
+
+    lineHeight: 52,
+
+    textAlign: "center",
+
+    color: "#0D9488",
+
+    fontWeight: "700",
+
+    marginTop: 40,
+  },
+
+  ratingCard: {
+    width: "100%",
+
+    backgroundColor: "#E2E8F0",
+
+    borderRadius: 40,
+
+    marginTop: 40,
+
+    padding: 20,
+
+    shadowColor: "#000",
+
+    shadowOffset: {
+      width: 4,
+      height: 4,
+    },
+
+    shadowOpacity: 0.15,
+
+    shadowRadius: 10,
+
+    elevation: 6,
+  },
+
+  starsContainer: {
+    flexDirection: "row",
+
+    justifyContent: "center",
+
+    marginBottom: 20,
+  },
+
+  star: {
+    fontSize: 48,
+
+    color: "#CBD5E1",
+
+    marginHorizontal: 4,
+  },
+
+  selectedStar: {
+    color: "#FACC15",
+  },
+
+  feedbackInput: {
+    backgroundColor: "#CBD5E1",
+
+    borderRadius: 18,
+
+    minHeight: 70,
+
+    paddingHorizontal: 16,
+
+    paddingVertical: 14,
+
+    fontSize: 18,
+
+    color: "#111827",
   },
 });
