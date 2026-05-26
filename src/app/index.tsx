@@ -17,10 +17,6 @@ export default function Index() {
     return <Redirect href="/(tabs)" />;
   }
 
-  const handleCreateAccountPress = () => {
-    navigation.navigate("signUp");
-  };
-
   const handleLoginPress = () => {
     navigation.navigate("signIn");
   };
@@ -30,13 +26,7 @@ export default function Index() {
       <View style={styles.imageContainer}>
         <Image source={Logo} style={styles.image} />
       </View>
-      <AppButton
-        onPress={handleCreateAccountPress}
-        containerStyle={{ marginTop: 27 }}
-        type="primary"
-      >
-        Create Account
-      </AppButton>
+
       <AppButton
         onPress={handleLoginPress}
         containerStyle={{ marginTop: 29 }}

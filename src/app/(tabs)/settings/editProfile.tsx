@@ -157,29 +157,9 @@ export default function EditProfile() {
           )}
         />
 
-        <AppButton
-          onPress={() => router.push("/settings/editAllergy")}
-          containerStyle={styles.button}
-          type="primary"
-        >
-          Edit Allergy
-        </AppButton>
 
-        <AppButton
-          onPress={() => router.push("/settings/editDisease")}
-          containerStyle={styles.button}
-          type="primary"
-        >
-          Edit Disease
-        </AppButton>
 
-        <AppButton
-          onPress={() => router.push("/settings/sendKYC")}
-          containerStyle={[styles.button, styles.kyc]}
-          type="primary"
-        >
-          Send KYC
-        </AppButton>
+
 
         <AppButton
           containerStyle={styles.save}

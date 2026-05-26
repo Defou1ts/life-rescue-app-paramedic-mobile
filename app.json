@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "life-rescue-app",
-    "slug": "life-rescue-app",
+    "name": "life-rescue-app-paramedic",
+    "slug": "life-rescue-app-paramedic",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "liferescueapp",
+    "scheme": "liferescueappparamedic",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
