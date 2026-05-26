@@ -1,4 +1,6 @@
 import { useAllergies } from "@/api/hooks/useAllergies";
+import { useDeleteAccountAllergy } from "@/api/hooks/useDeleteAccountAllergy";
+import Entypo from "@expo/vector-icons/Entypo";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import {
@@ -12,6 +14,7 @@ const Logo = require("@/assets/images/logo.png");
 
 export default function EditAllergy() {
   const { data: allergiesData, isLoading: isLoadingAllergies } = useAllergies();
+  const { mutate: deleteAllergy, isPending } = useDeleteAccountAllergy();
   const router = useRouter();
 
   if (isLoadingAllergies || !allergiesData) {
@@ -39,7 +42,7 @@ export default function EditAllergy() {
               <Text style={styles.plusText}>+</Text>
             </Pressable>
           </View>
-          <View style={styles.infoContent}>
+          <View style={styles.listContainer}>
             {[
               allergiesData.length === 0
                 ? { id: "default", name: "No allergies" }
@@ -48,9 +51,18 @@ export default function EditAllergy() {
             ]?.map((allergy) => {
               if (!allergy) return null;
               return (
-                <Text style={styles.infoText} key={allergy.id}>
-                  {allergy.name}
-                </Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoText} key={allergy.id}>
+                    {allergy.name}
+                  </Text>
+                  {isPending ? (
+                    <ActivityIndicator size="small" />
+                  ) : (
+                    <Pressable onPress={() => deleteAllergy(allergy.id)}>
+                      <Entypo name="cross" size={30} color="#0D9488" />
+                    </Pressable>
+                  )}
+                </View>
               );
             })}
           </View>
@@ -114,6 +126,9 @@ const styles = StyleSheet.create({
   infoContent: {
     paddingVertical: 18,
     paddingHorizontal: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
 
     backgroundColor: "#EBF1F5",
     shadowColor: "#000",
@@ -146,5 +161,8 @@ const styles = StyleSheet.create({
     fontFamily: "Inter",
     fontWeight: "bold",
     color: "#EBF1F5",
+  },
+  listContainer: {
+    gap: 10,
   },
 });

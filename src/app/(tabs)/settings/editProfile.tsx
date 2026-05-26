@@ -6,6 +6,7 @@ import { Input } from "@/components/input";
 import { Host, Switch } from "@expo/ui/jetpack-compose";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useRouter } from "expo-router";
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import * as yup from "yup";
@@ -30,12 +31,14 @@ const schema = yup.object({
 type FormValues = yup.InferType<typeof schema>;
 export default function EditProfile() {
   const { data, isLoading, isError } = useProfile();
+
   const { mutate, isPending } = useUpdateProfile();
   const router = useRouter();
   const {
     control,
     handleSubmit,
     formState: { errors },
+    reset,
   } = useForm<FormValues>({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -44,6 +47,15 @@ export default function EditProfile() {
       isTwoFactorEnabled: false,
     },
   });
+
+  useEffect(() => {
+    console.log(data);
+    reset({
+      fullName: data ? `${data.name} ${data.lastName}` : "",
+      phoneNumber: data?.phoneNumber ?? "",
+      isTwoFactorEnabled: data?.isTwoFactorEnabled ?? false,
+    });
+  }, [data]);
 
   const onSubmit = (values: FormValues) => {
     const [firstName, ...rest] = values.fullName.trim().split(" ");
@@ -161,7 +173,11 @@ export default function EditProfile() {
           Edit Disease
         </AppButton>
 
-        <AppButton containerStyle={[styles.button, styles.kyc]} type="primary">
+        <AppButton
+          onPress={() => router.push("/settings/sendKYC")}
+          containerStyle={[styles.button, styles.kyc]}
+          type="primary"
+        >
           Send KYC
         </AppButton>
 

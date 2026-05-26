@@ -6,15 +6,15 @@ export type Disease = {
   name: string;
 };
 
-export type DiseaseResponse = Array<Disease>;
+export type DiseasesResponse = Array<Disease>;
 
 
 export const useDiseases = () => {
   return useQuery({
-    queryKey: ["disease"],
+    queryKey: ["diseases"],
     queryFn: async () => {
       const res = await axiosInstance.get("/disease/account");
-      return res.data as DiseaseResponse;
+      return res.data as DiseasesResponse;
     },
   });
 };

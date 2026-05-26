@@ -38,7 +38,9 @@ export default function PRofile() {
         <Image source={Logo} style={styles.image} />
       </View>
       <View style={styles.dataContainer}>
-        {data.name && <Input value={data.name} />}
+        {data.name && data.lastName && (
+          <Input value={data.name + " " + data.lastName} />
+        )}
         {data.email && <Input value={data.email} />}
         {data.phoneNumber && <Input value={data.phoneNumber} />}
         {data.isTwoFactorEnabled && (

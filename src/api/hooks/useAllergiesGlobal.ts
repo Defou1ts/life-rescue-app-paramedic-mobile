@@ -4,7 +4,7 @@ import { AllergiesResponse } from "./useAllergies";
 
 export const useAllergiesGlobal = () => {
   return useQuery({
-    queryKey: ["allergies"],
+    queryKey: ["allergiesGlobal"],
     queryFn: async () => {
       const res = await axiosInstance.get("/allergy/global");
       return res.data as AllergiesResponse;

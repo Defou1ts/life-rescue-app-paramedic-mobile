@@ -1,5 +1,5 @@
-import { useAddCustomAllergy } from "@/api/hooks/useAddCustomAllergy";
-import { useAllergiesGlobal } from "@/api/hooks/useAllergiesGlobal";
+import { useAddCustomDisease } from "@/api/hooks/useAddCustomDisease";
+import { useDiseasesGlobal } from "@/api/hooks/useDiseaseGlobal";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
 import { Title } from "@/components/Title";
@@ -16,16 +16,16 @@ import {
 
 const Logo = require("@/assets/images/logo.png");
 
-export default function AddAllergy() {
-  const { data: allergiesData, isLoading: isLoadingAllergies } =
-    useAllergiesGlobal();
+export default function AddDisease() {
+  const { data: diseasesData, isLoading: isLoadingDiseases } =
+    useDiseasesGlobal();
 
-  const [customAllergyName, setCustomAllergyName] = useState("");
+  const [customDiseaseName, setCustomDiseaseName] = useState("");
 
-  const { mutate, isPending } = useAddCustomAllergy();
+  const { mutate, isPending } = useAddCustomDisease();
 
   const sheetRef = useRef<BottomSheet>(null);
-  if (isLoadingAllergies || !allergiesData) {
+  if (isLoadingDiseases || !diseasesData) {
     return (
       <View style={styles.loaderContainer}>
         <ActivityIndicator size="large" />
@@ -33,10 +33,10 @@ export default function AddAllergy() {
     );
   }
 
-  const allergies =
-    allergiesData.length === 0
-      ? [{ id: "default", name: "No allergies" }]
-      : allergiesData;
+  const diseases =
+    diseasesData.length === 0
+      ? [{ id: "default", name: "No diseases" }]
+      : diseasesData;
 
   return (
     <View style={styles.container}>
@@ -47,12 +47,12 @@ export default function AddAllergy() {
 
         <View style={styles.infoWrapper}>
           <View style={styles.infoHeader}>
-            <Text style={styles.infoHeaderText}>Allergy</Text>
+            <Text style={styles.infoHeaderText}>Disease</Text>
           </View>
 
           <View style={styles.listContainer}>
             <FlatList
-              data={allergies}
+              data={diseases}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.listContent}
@@ -65,7 +65,7 @@ export default function AddAllergy() {
 
         <View style={styles.buttonsContainer}>
           <AppButton type="primary" onPress={() => sheetRef.current?.expand()}>
-            Custom Allergy
+            Custom Disease
           </AppButton>
 
           <AppButton containerStyle={styles.saveButton} type="primary">
@@ -87,19 +87,19 @@ export default function AddAllergy() {
               paddingVertical: 20,
             }}
           >
-            <Title>Custom Allergy</Title>
+            <Title>Custom Disease</Title>
             <Input
-              value={customAllergyName}
+              value={customDiseaseName}
               placeholder="Name"
-              onChangeText={setCustomAllergyName}
+              onChangeText={setCustomDiseaseName}
             />
             {isPending && <ActivityIndicator size="large" />}
             <AppButton
               type="primary"
-              disabled={isPending || customAllergyName.trim() === ""}
+              disabled={isPending || customDiseaseName.trim() === ""}
               onPress={() => {
-                mutate(customAllergyName);
-                setCustomAllergyName("");
+                mutate(customDiseaseName);
+                setCustomDiseaseName("");
               }}
             >
               Add
