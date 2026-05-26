@@ -1,3 +1,4 @@
+import { useAddAllergiesToAccount } from "@/api/hooks/useAddAllergyToAccount";
 import { useAddCustomAllergy } from "@/api/hooks/useAddCustomAllergy";
 import { useAllergiesGlobal } from "@/api/hooks/useAllergiesGlobal";
 import { AppButton } from "@/components/button";
@@ -5,10 +6,12 @@ import { Input } from "@/components/input";
 import { Title } from "@/components/Title";
 import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -21,8 +24,13 @@ export default function AddAllergy() {
     useAllergiesGlobal();
 
   const [customAllergyName, setCustomAllergyName] = useState("");
+  const [selectedAllergiesIds, setSelectedAllergiesIds] = useState<string[]>(
+    [],
+  );
 
   const { mutate, isPending } = useAddCustomAllergy();
+  const { mutateAsync: addAllergyToAccount, isPending: isAddingAllergy } =
+    useAddAllergiesToAccount();
 
   const sheetRef = useRef<BottomSheet>(null);
   if (isLoadingAllergies || !allergiesData) {
@@ -33,11 +41,22 @@ export default function AddAllergy() {
     );
   }
 
+  const handleSavePress = async () => {
+    try {
+      await Promise.all(
+        selectedAllergiesIds.map((id) => addAllergyToAccount(id)),
+      );
+    } catch (error) {
+      console.error("Failed to add allergies to account", error);
+    } finally {
+      router.replace("/(tabs)/settings/editAllergy");
+    }
+  };
+
   const allergies =
     allergiesData.length === 0
       ? [{ id: "default", name: "No allergies" }]
       : allergiesData;
-
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -55,9 +74,36 @@ export default function AddAllergy() {
               data={allergies}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={{ gap: 20, paddingBottom: 20 }}
               renderItem={({ item }) => (
-                <Text style={styles.infoText}>{item.name}</Text>
+                <Pressable
+                  onPress={() => {
+                    setSelectedAllergiesIds((prev) => {
+                      if (prev.includes(item.id)) {
+                        return prev.filter((id) => id !== item.id);
+                      } else {
+                        return [...prev, item.id];
+                      }
+                    });
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.listContent,
+                      selectedAllergiesIds.includes(item.id) &&
+                        styles.selectedListContent,
+                    ]}
+                  >
+                    <Text style={styles.infoText}>{item.name}</Text>
+                    {selectedAllergiesIds.includes(item.id) &&
+                      isAddingAllergy && (
+                        <ActivityIndicator
+                          size="small"
+                          style={{ marginLeft: 10 }}
+                        />
+                      )}
+                  </View>
+                </Pressable>
               )}
             />
           </View>
@@ -68,7 +114,12 @@ export default function AddAllergy() {
             Custom Allergy
           </AppButton>
 
-          <AppButton containerStyle={styles.saveButton} type="primary">
+          <AppButton
+            onPress={handleSavePress}
+            containerStyle={styles.saveButton}
+            type="primary"
+            disabled={isAddingAllergy}
+          >
             Save
           </AppButton>
         </View>
@@ -186,21 +237,22 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 10,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#b4b3b3",
     marginHorizontal: 4,
     height: 63,
 
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-
+  selectedListContent: {
+    backgroundColor: "#0D948826",
+  },
   infoText: {
     fontSize: 25,
     fontFamily: "Inter",
     color: "#0D9488",
     fontWeight: "300",
-    height: 80,
   },
 
   buttonsContainer: {

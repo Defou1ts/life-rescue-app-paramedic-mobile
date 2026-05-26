@@ -1,14 +1,17 @@
 import { useAddCustomDisease } from "@/api/hooks/useAddCustomDisease";
+import { useAddDiseaseToAccount } from "@/api/hooks/useAddDiseaseToAccount";
 import { useDiseasesGlobal } from "@/api/hooks/useDiseaseGlobal";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
 import { Title } from "@/components/Title";
 import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -21,8 +24,11 @@ export default function AddDisease() {
     useDiseasesGlobal();
 
   const [customDiseaseName, setCustomDiseaseName] = useState("");
+  const [selectedDiseasesIds, setSelectedDiseasesIds] = useState<string[]>([]);
 
   const { mutate, isPending } = useAddCustomDisease();
+  const { mutateAsync: addDiseaseToAccount, isPending: isAddingDisease } =
+    useAddDiseaseToAccount();
 
   const sheetRef = useRef<BottomSheet>(null);
   if (isLoadingDiseases || !diseasesData) {
@@ -33,11 +39,22 @@ export default function AddDisease() {
     );
   }
 
+  const handleSavePress = async () => {
+    try {
+      await Promise.all(
+        selectedDiseasesIds.map((id) => addDiseaseToAccount(id)),
+      );
+    } catch (error) {
+      console.error("Failed to add diseases to account", error);
+    } finally {
+      router.replace("/(tabs)/settings/editDisease");
+    }
+  };
+
   const diseases =
     diseasesData.length === 0
       ? [{ id: "default", name: "No diseases" }]
       : diseasesData;
-
   return (
     <View style={styles.container}>
       <View style={styles.content}>
@@ -55,9 +72,36 @@ export default function AddDisease() {
               data={diseases}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={{ gap: 20, paddingBottom: 20 }}
               renderItem={({ item }) => (
-                <Text style={styles.infoText}>{item.name}</Text>
+                <Pressable
+                  onPress={() => {
+                    setSelectedDiseasesIds((prev) => {
+                      if (prev.includes(item.id)) {
+                        return prev.filter((id) => id !== item.id);
+                      } else {
+                        return [...prev, item.id];
+                      }
+                    });
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.listContent,
+                      selectedDiseasesIds.includes(item.id) &&
+                        styles.selectedListContent,
+                    ]}
+                  >
+                    <Text style={styles.infoText}>{item.name}</Text>
+                    {selectedDiseasesIds.includes(item.id) &&
+                      isAddingDisease && (
+                        <ActivityIndicator
+                          size="small"
+                          style={{ marginLeft: 10 }}
+                        />
+                      )}
+                  </View>
+                </Pressable>
               )}
             />
           </View>
@@ -68,7 +112,12 @@ export default function AddDisease() {
             Custom Disease
           </AppButton>
 
-          <AppButton containerStyle={styles.saveButton} type="primary">
+          <AppButton
+            onPress={handleSavePress}
+            containerStyle={styles.saveButton}
+            type="primary"
+            disabled={isAddingDisease}
+          >
             Save
           </AppButton>
         </View>
@@ -186,21 +235,22 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.25,
     shadowRadius: 10,
-    elevation: 10,
+    borderWidth: 1,
+    borderColor: "#b4b3b3",
     marginHorizontal: 4,
     height: 63,
 
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },
-
+  selectedListContent: {
+    backgroundColor: "#0D948826",
+  },
   infoText: {
     fontSize: 25,
     fontFamily: "Inter",
     color: "#0D9488",
     fontWeight: "300",
-    height: 80,
   },
 
   buttonsContainer: {
