@@ -25,9 +25,14 @@ import { useDeclineEmergency } from "@/api/hooks/useDeclineEmergency";
 import { useFinishEmergency } from "@/api/hooks/useFinishEmergency";
 import { DeclineSheet } from "@/components/decline-sheet/Index";
 
-type Coordinates = {
+type Coords = {
   latitude: number;
   longitude: number;
+};
+
+const MOCK_LOCATION = {
+  latitude: 53.9023,
+  longitude: 27.5619,
 };
 
 export default function Home() {
@@ -41,11 +46,9 @@ export default function Home() {
 
   const finishEmergency = useFinishEmergency();
 
-  const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
+  const [userLocation, setUserLocation] = useState<Coords | null>(null);
 
-  const [patientLocation, setPatientLocation] = useState<Coordinates | null>(
-    null,
-  );
+  const [patientLocation, setPatientLocation] = useState<Coords | null>(null);
 
   const [emergencyPayload, setEmergencyPayload] = useState<any>(null);
 
@@ -68,19 +71,25 @@ export default function Home() {
   }, []);
 
   const initialize = async () => {
+    let coords: Coords;
+
     const { status } = await Location.requestForegroundPermissionsAsync();
 
     if (status !== "granted") {
-      return;
+      coords = MOCK_LOCATION;
+    } else {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      coords = {
+        latitude: location.coords.latitude,
+
+        longitude: location.coords.longitude,
+      };
     }
 
-    const location = await Location.getCurrentPositionAsync({});
-
-    setUserLocation({
-      latitude: location.coords.latitude,
-
-      longitude: location.coords.longitude,
-    });
+    setUserLocation(coords);
 
     Location.watchPositionAsync(
       {
