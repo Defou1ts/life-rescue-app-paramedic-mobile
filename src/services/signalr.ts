@@ -1,5 +1,8 @@
 import { tokenStorage } from "@/store/tokenStorage";
-import type { EmergencyAssignedPayload } from "@/types/emergency";
+import type {
+  Coordinates,
+  EmergencyAssignedPayload,
+} from "@/types/emergency";
 
 import {
   HubConnection,
@@ -9,19 +12,15 @@ import {
 
 export type EmergencyUpdatePayload = {
   emergencyId: string;
-
-  location: {
-    latitude: number;
-    longitude: number;
-  };
-
+  location: Coordinates;
   initiatorName: string;
-
-  symptoms: string[];
-
+  symptoms: EmergencyAssignedPayload["symptoms"];
   diseases: string[];
-
   allergies: string[];
+};
+
+export type LocationUpdatePayload = {
+  location: Coordinates;
 };
 
 class SignalRService {
@@ -48,16 +47,16 @@ class SignalRService {
           return token || "";
         },
       })
-
       .withAutomaticReconnect()
-
       .configureLogging(LogLevel.Information)
-
       .build();
 
-    this.connection.on("ReceiveEmergencyUpdate", (payload) => {
-      this.onReceiveEmergencyUpdate?.(payload);
-    });
+    this.connection.on(
+      "ReceiveEmergencyUpdate",
+      (payload: EmergencyUpdatePayload) => {
+        this.onReceiveEmergencyUpdate?.(payload);
+      },
+    );
 
     this.connection.on(
       "ReceiveEmergencyAssigned",
@@ -71,10 +70,16 @@ class SignalRService {
     return this.connection;
   }
 
-  async subscribeToAssignedEmergency() {
+  async subscribeToEmergency(emergencyId: string) {
     const connection = await this.startConnection();
 
-    await connection.invoke("AssignedEmergency");
+    await connection.invoke("SubscribeToEmergency", emergencyId);
+  }
+
+  async sendLocationUpdate(location: Coordinates) {
+    const connection = await this.startConnection();
+
+    await connection.invoke("SendLocationUpdate", { location });
   }
 
   async stopConnection() {

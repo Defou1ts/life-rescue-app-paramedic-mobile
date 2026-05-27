@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import * as Location from "expo-location";
 
@@ -62,6 +62,10 @@ export default function Home() {
 
   const [finishVisible, setFinishVisible] = useState(false);
 
+  const userLocationRef = useRef<Coords | null>(null);
+
+  userLocationRef.current = userLocation;
+
   const initialize = async () => {
     let coords: Coords;
 
@@ -107,35 +111,66 @@ export default function Home() {
       void initialize();
     }, 0);
 
-    signalRService.onReceiveEmergencyAssigned = (payload) => {
+    signalRService.onReceiveEmergencyAssigned = async (payload) => {
       setEmergencyPayload(payload);
       setPatientLocation(payload.location);
       setEmergencyMode(true);
-    };
 
-    const connectAssignedEmergency = async () => {
       try {
-        await signalRService.subscribeToAssignedEmergency();
+        await signalRService.subscribeToEmergency(payload.emergencyId);
       } catch (error) {
-        console.error("Failed to subscribe to AssignedEmergency:", error);
+        console.error("Failed to subscribe to emergency:", error);
       }
     };
-
-    connectAssignedEmergency();
-
-    return () => {
-      clearTimeout(initTimeoutId);
-      signalRService.onReceiveEmergencyAssigned = null;
-      signalRService.stopConnection();
-    };
-  }, []);
-
-  const startEmergency = () => {
-    setEmergencyMode(true);
 
     signalRService.onReceiveEmergencyUpdate = (payload) => {
       setPatientLocation(payload.location);
     };
+
+    const connect = async () => {
+      try {
+        await signalRService.startConnection();
+      } catch (error) {
+        console.error("Failed to connect to SignalR:", error);
+      }
+    };
+
+    void connect();
+
+    return () => {
+      clearTimeout(initTimeoutId);
+      signalRService.onReceiveEmergencyAssigned = null;
+      signalRService.onReceiveEmergencyUpdate = null;
+      void signalRService.stopConnection();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!emergencyMode) {
+      return;
+    }
+
+    const sendLocation = () => {
+      const location = userLocationRef.current;
+
+      if (!location) {
+        return;
+      }
+
+      void signalRService.sendLocationUpdate(location).catch((error) => {
+        console.error("Failed to send location update:", error);
+      });
+    };
+
+    sendLocation();
+
+    const intervalId = setInterval(sendLocation, 30_000);
+
+    return () => clearInterval(intervalId);
+  }, [emergencyMode]);
+
+  const startEmergency = () => {
+    setEmergencyMode(true);
   };
 
   return (
