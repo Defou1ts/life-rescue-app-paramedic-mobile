@@ -6,7 +6,7 @@ import * as Location from "expo-location";
 
 import { useEffect, useRef, useState } from "react";
 
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 import { WebView } from "react-native-webview";
 
@@ -146,73 +146,81 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
     : "";
 
   const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0"
-        />
+<!DOCTYPE html>
+<html>
+<head>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
 
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet/dist/leaflet.css"
-        />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
 
-        <style>
-          html,
-          body,
-          #map {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #map {
+      width: 100%;
+      height: 100vh;
+    }
+
+    .leaflet-container {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    document.addEventListener(
+      "DOMContentLoaded",
+      function () {
+        const userLat =
+          ${userLocation.latitude};
+
+        const userLng =
+          ${userLocation.longitude};
+
+        const map = L.map("map", {
+          zoomControl: false,
+        }).setView(
+          [userLat, userLng],
+          14
+        );
+
+        L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution:
+              "© OpenStreetMap contributors",
           }
-        </style>
-      </head>
+        ).addTo(map);
 
-      <body>
-        <div id="map"></div>
-
-        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
-        <script>
-          const userLat =
-            ${userLocation.latitude};
-
-          const userLng =
-            ${userLocation.longitude};
-
-          const map = L.map(
-            'map',
-            {
-              zoomControl: false
-            }
-          ).setView(
-            [userLat, userLng],
-            14
-          );
-
-          L.tileLayer(
-            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            {
-              attribution:
-                '© OpenStreetMap contributors'
-            }
-          ).addTo(map);
-
-          L.marker([
-            userLat,
-            userLng
-          ])
-          .addTo(map)
-          .bindPopup('You')
-          .openPopup();
-
-        </script>
-      </body>
-    </html>
-  `;
+        L.marker([
+          userLat,
+          userLng,
+        ]).addTo(map);
+      }
+    );
+  </script>
+</body>
+</html>
+`;
 
   return (
     <View style={styles.container}>
@@ -221,13 +229,10 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
         originWhitelist={["*"]}
         source={{ html }}
         style={styles.map}
+        javaScriptEnabled
+        domStorageEnabled
+        mixedContentMode="always"
       />
-
-      {activeEmergency && estimatedArrival && (
-        <View style={styles.etaContainer}>
-          <Text style={styles.etaText}>Arriving in {estimatedArrival}</Text>
-        </View>
-      )}
     </View>
   );
 };

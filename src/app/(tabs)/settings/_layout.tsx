@@ -7,11 +7,6 @@ export const SETTINGS_SCREEN_NAMES = {
   EDIT_PROFILE: "editProfile",
   CHANGE_PASSWORD: "changePassword",
   CHANGE_EMAIL: "changeEmail",
-  EDIT_DISEASE: "editDisease",
-  EDIT_ALLERGY: "editAllergy",
-  ADD_ALLERGY: "addAllergy",
-  ADD_DISEASE: "addDisease",
-  SEND_KYC: "sendKYC",
 } as const;
 
 export default function SettingsLayout() {
@@ -38,26 +33,6 @@ export default function SettingsLayout() {
       <Stack.Screen
         name={SETTINGS_SCREEN_NAMES.CHANGE_EMAIL}
         options={{ title: "Change  Email" }}
-      />
-      <Stack.Screen
-        name={SETTINGS_SCREEN_NAMES.EDIT_ALLERGY}
-        options={{ title: "Edit Allergy" }}
-      />
-      <Stack.Screen
-        name={SETTINGS_SCREEN_NAMES.ADD_ALLERGY}
-        options={{ title: "Add Allergy" }}
-      />
-      <Stack.Screen
-        name={SETTINGS_SCREEN_NAMES.EDIT_DISEASE}
-        options={{ title: "Edit Disease" }}
-      />
-      <Stack.Screen
-        name={SETTINGS_SCREEN_NAMES.ADD_DISEASE}
-        options={{ title: "Add Disease" }}
-      />
-      <Stack.Screen
-        name={SETTINGS_SCREEN_NAMES.SEND_KYC}
-        options={{ title: "Send KYC" }}
       />
     </Stack>
   );

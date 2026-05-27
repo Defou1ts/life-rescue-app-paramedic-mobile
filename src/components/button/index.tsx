@@ -28,7 +28,7 @@ export const AppButton = ({
 }: Props) => {
   return (
     <TouchableOpacity onPress={onPress} disabled={disabled}>
-      <View style={[styles.button, styles[type], containerStyle]}>
+      <View style={[styles.button, styles[type], containerStyle, disabled && { opacity: 0.6 }]}>
         <Text
           style={[
             styles.text,

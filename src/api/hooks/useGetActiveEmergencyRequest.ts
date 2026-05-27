@@ -41,9 +41,9 @@ export const useGetActiveEmergencyRequest = () => {
   return useQuery({
     queryKey: ["getActiveEmergencyRequest"],
     queryFn: async () => {
-      const response =
-        await axiosInstance.get<ActiveEmergency>("/emergency/ongoing");
-        console.log(response.data);
+      const response = await axiosInstance.get<ActiveEmergency>(
+        "/emergency/assigned",
+      );
       if (response.status === 200) return response.data;
     },
     refetchOnWindowFocus: true,

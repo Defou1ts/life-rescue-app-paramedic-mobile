@@ -6,11 +6,8 @@ import Toast from "react-native-toast-message";
 export const ROOT_SCREEN_NAMES = {
   INDEX: "index",
   SIGN_IN: "signIn",
-  SIGN_UP: "signUp",
   RESET_PASSWORD: "resetPassword",
-  VERIFY_EMAIL: "verify/[email]",
   NEW_PASSWORD: "newPassword",
-  REQUEST: "request",
   TABS: "(tabs)",
 } as const;
 
@@ -34,24 +31,12 @@ export default function RootLayout() {
             options={{ title: "SignIn" }}
           />
           <Stack.Screen
-            name={ROOT_SCREEN_NAMES.SIGN_UP}
-            options={{ title: "SignUp" }}
-          />
-          <Stack.Screen
             name={ROOT_SCREEN_NAMES.RESET_PASSWORD}
             options={{ title: "Reset Password" }}
           />
           <Stack.Screen
-            name={ROOT_SCREEN_NAMES.VERIFY_EMAIL}
-            options={{ title: "Verify Email" }}
-          />
-          <Stack.Screen
             name={ROOT_SCREEN_NAMES.NEW_PASSWORD}
             options={{ title: "New Password" }}
-          />
-          <Stack.Screen
-            name={ROOT_SCREEN_NAMES.REQUEST}
-            options={{ title: "Request" }}
           />
           <Stack.Screen
             name={ROOT_SCREEN_NAMES.TABS}
