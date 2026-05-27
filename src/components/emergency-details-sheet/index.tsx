@@ -1,12 +1,16 @@
+import type {
+  EmergencyAssignedPayload,
+  SymptomTreeNode,
+} from "@/types/emergency";
 import { ScrollView, Text, View } from "react-native";
 
 import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
 import { SymptomTree } from "../symptom-tree";
 
 type Props = {
-  payload: any;
+  payload: EmergencyAssignedPayload;
 
-  symptomTree: any[];
+  symptomTree: SymptomTreeNode[];
 };
 
 export const EmergencyDetailsSheet = ({ payload, symptomTree }: Props) => {

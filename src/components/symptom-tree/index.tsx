@@ -1,21 +1,8 @@
+import type { SymptomTreeNode } from "@/types/emergency";
 import { Text, View } from "react-native";
 
-type Node = {
-  questionId: string;
-
-  questionText: string;
-
-  selectedAnswers: {
-    answerId: string;
-
-    answerText: string;
-
-    childrenQuestion: Node[];
-  }[];
-};
-
 type Props = {
-  nodes: Node[];
+  nodes: SymptomTreeNode[];
 };
 
 export const SymptomTree = ({ nodes }: Props) => {

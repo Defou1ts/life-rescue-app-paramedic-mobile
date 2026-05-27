@@ -1,4 +1,5 @@
 import { tokenStorage } from "@/store/tokenStorage";
+import type { EmergencyAssignedPayload } from "@/types/emergency";
 
 import {
   HubConnection,
@@ -30,6 +31,10 @@ class SignalRService {
     | ((payload: EmergencyUpdatePayload) => void)
     | null = null;
 
+  onReceiveEmergencyAssigned?:
+    | ((payload: EmergencyAssignedPayload) => void)
+    | null = null;
+
   async startConnection() {
     if (this.connection && this.connection.state === "Connected") {
       return this.connection;
@@ -54,9 +59,22 @@ class SignalRService {
       this.onReceiveEmergencyUpdate?.(payload);
     });
 
+    this.connection.on(
+      "ReceiveEmergencyAssigned",
+      (payload: EmergencyAssignedPayload) => {
+        this.onReceiveEmergencyAssigned?.(payload);
+      },
+    );
+
     await this.connection.start();
 
     return this.connection;
+  }
+
+  async subscribeToAssignedEmergency() {
+    const connection = await this.startConnection();
+
+    await connection.invoke("AssignedEmergency");
   }
 
   async stopConnection() {

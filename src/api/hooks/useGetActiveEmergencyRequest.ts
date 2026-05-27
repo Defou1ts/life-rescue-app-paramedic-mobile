@@ -1,23 +1,13 @@
+import {
+  Coordinates,
+  SymptomTreeNode,
+} from "@/types/emergency";
 import { useQuery } from "@tanstack/react-query";
 import { axiosInstance } from "../axiosInstance";
 
 export type EmergencyStatus = "Ongoing" | "Finished";
 
-export interface Coordinates {
-  latitude: number;
-  longitude: number;
-}
-
-export interface SymptomTreeNode {
-  questionId: string;
-  questionText: string;
-
-  selectedAnswers: {
-    answerId: string;
-    answerText: string;
-    childrenQuestion: SymptomTreeNode[];
-  }[];
-}
+export type { Coordinates, SymptomTreeNode };
 
 export interface ActiveEmergency {
   id: string;

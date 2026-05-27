@@ -11,6 +11,7 @@ import { EmergencyMap } from "@/components/emergency-map";
 import { signalRService } from "@/services/signalr";
 
 import { useGetActiveEmergencyRequest } from "@/api/hooks/useGetActiveEmergencyRequest";
+import type { EmergencyAssignedPayload } from "@/types/emergency";
 
 import { EmergencyDetailsSheet } from "@/components/emergency-details-sheet";
 
@@ -50,7 +51,8 @@ export default function Home() {
 
   const [patientLocation, setPatientLocation] = useState<Coords | null>(null);
 
-  const [emergencyPayload, setEmergencyPayload] = useState<any>(null);
+  const [emergencyPayload, setEmergencyPayload] =
+    useState<EmergencyAssignedPayload | null>(null);
 
   const [emergencyMode, setEmergencyMode] = useState(false);
 
@@ -59,16 +61,6 @@ export default function Home() {
   const [declineVisible, setDeclineVisible] = useState(false);
 
   const [finishVisible, setFinishVisible] = useState(false);
-
-  useEffect(() => {
-    initialize();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      signalRService.stopConnection();
-    };
-  }, []);
 
   const initialize = async () => {
     let coords: Coords;
@@ -110,14 +102,38 @@ export default function Home() {
     );
   };
 
-  const startEmergency = async () => {
+  useEffect(() => {
+    const initTimeoutId = setTimeout(() => {
+      void initialize();
+    }, 0);
+
+    signalRService.onReceiveEmergencyAssigned = (payload) => {
+      setEmergencyPayload(payload);
+      setPatientLocation(payload.location);
+      setEmergencyMode(true);
+    };
+
+    const connectAssignedEmergency = async () => {
+      try {
+        await signalRService.subscribeToAssignedEmergency();
+      } catch (error) {
+        console.error("Failed to subscribe to AssignedEmergency:", error);
+      }
+    };
+
+    connectAssignedEmergency();
+
+    return () => {
+      clearTimeout(initTimeoutId);
+      signalRService.onReceiveEmergencyAssigned = null;
+      signalRService.stopConnection();
+    };
+  }, []);
+
+  const startEmergency = () => {
     setEmergencyMode(true);
 
-    await signalRService.startConnection();
-
     signalRService.onReceiveEmergencyUpdate = (payload) => {
-      setEmergencyPayload(payload);
-
       setPatientLocation(payload.location);
     };
   };
@@ -179,10 +195,14 @@ export default function Home() {
         )}
       </View>
 
-      {detailsVisible && (
+      {detailsVisible && emergencyPayload && (
         <EmergencyDetailsSheet
           payload={emergencyPayload}
-          symptomTree={activeEmergency?.symptomTree || []}
+          symptomTree={
+            emergencyPayload.symptoms.length > 0
+              ? emergencyPayload.symptoms
+              : activeEmergency?.symptomTree || []
+          }
         />
       )}
 
