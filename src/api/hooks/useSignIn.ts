@@ -20,7 +20,13 @@ export interface SignInResponseData {
 }
 
 export const signIn = async (data: SignInRequestData) => {
-  return axiosInstance.post<SignInResponseData>("/auth/login", data);
+  console.log(data);
+  const response = await axiosInstance.post<SignInResponseData>(
+    "/auth/login",
+    data,
+  );
+  console.log(response.data);
+  return response;
 };
 
 export const useSignIn = () => {
@@ -33,7 +39,9 @@ export const useSignIn = () => {
   >({
     mutationKey: ["sign-in"],
     mutationFn: signIn,
-
+    onError(error, variables, onMutateResult, context) {
+      console.error("Sign-in error:", error);
+    },
     onSuccess: async (data, { email, password }) => {
       if (data.status === 202) {
         router.push({

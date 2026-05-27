@@ -36,7 +36,7 @@ class SignalRService {
     }
 
     this.connection = new HubConnectionBuilder()
-      .withUrl("http://10.0.2.2:5032/clientHub", {
+      .withUrl("http://10.0.2.2:5034/paramedicHub", {
         accessTokenFactory: async () => {
           const token = await tokenStorage.getAccessToken();
 
@@ -57,6 +57,16 @@ class SignalRService {
     await this.connection.start();
 
     return this.connection;
+  }
+
+  async stopConnection() {
+    if (!this.connection) {
+      return;
+    }
+
+    await this.connection.stop();
+
+    this.connection = null;
   }
 }
 

@@ -1,114 +1,123 @@
 // src/components/emergency-map.tsx
 
-import { ActiveEmergency } from "@/api/hooks/useGetActiveEmergencyRequest";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import * as Location from "expo-location";
-
-import { useEffect, useRef, useState } from "react";
-
-import { ActivityIndicator, StyleSheet, View } from "react-native";
-
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 
-const USE_MOCK_LOCATION = false;
-
-const MOCK_LOCATION = {
-  latitude: 53.9023,
-  longitude: 27.5619,
-};
-
-type Coords = {
+type Coordinates = {
   latitude: number;
   longitude: number;
 };
 
 type Props = {
-  activeEmergency?: ActiveEmergency | null;
+  userLocation: Coordinates | null;
+
+  patientLocation: Coordinates | null;
 };
 
-export const EmergencyMap = ({ activeEmergency }: Props) => {
+type RouteCoordinates = [number, number][];
+
+export const EmergencyMap = ({
+  userLocation,
+
+  patientLocation,
+}: Props) => {
   const webViewRef = useRef<WebView>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [route, setRoute] = useState<RouteCoordinates>([]);
 
-  const [userLocation, setUserLocation] = useState<Coords | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
 
-  const [nearbyMedics, setNearbyMedics] = useState<Coords[]>([]);
-
-  const [paramedicLocation, setParamedicLocation] = useState<Coords | null>(
-    null,
-  );
-
-  const [estimatedArrival, setEstimatedArrival] = useState<string | null>(null);
+  /**
+   * =========================
+   * FETCH REAL ROUTE (OSRM)
+   * =========================
+   */
 
   useEffect(() => {
-    initialize();
-  }, []);
+    if (!userLocation || !patientLocation) {
+      setRoute([]);
 
-  useEffect(() => {
-    if (!paramedicLocation || !userLocation) {
       return;
     }
 
-    setEstimatedArrival(calculateETA(paramedicLocation, userLocation));
-  }, [paramedicLocation, userLocation]);
+    fetchRoute();
+  }, [userLocation, patientLocation]);
 
-  const initialize = async () => {
+  const fetchRoute = async () => {
+    if (!userLocation || !patientLocation) {
+      return;
+    }
+
     try {
-      let coords: Coords;
+      setIsLoadingRoute(true);
 
-      if (USE_MOCK_LOCATION) {
-        coords = MOCK_LOCATION;
-      } else {
-        const { status } = await Location.requestForegroundPermissionsAsync();
+      const url =
+        `https://router.project-osrm.org/route/v1/driving/` +
+        `${userLocation.longitude},${userLocation.latitude};` +
+        `${patientLocation.longitude},${patientLocation.latitude}` +
+        `?overview=full&geometries=geojson`;
 
-        if (status !== "granted") {
-          coords = MOCK_LOCATION;
-        } else {
-          const location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
+      const response = await fetch(url);
 
-          coords = {
-            latitude: location.coords.latitude,
+      const data = await response.json();
 
-            longitude: location.coords.longitude,
-          };
-        }
+      const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+
+      if (!coordinates) {
+        return;
       }
 
-      setUserLocation(coords);
-    } catch {
-      setUserLocation(MOCK_LOCATION);
+      setRoute(coordinates);
+    } catch (error) {
+      console.log("ROUTE_ERROR", error);
     } finally {
-      setLoading(false);
+      setIsLoadingRoute(false);
     }
   };
 
-  const calculateETA = (from: Coords, to: Coords) => {
-    const R = 6371;
+  /**
+   * =========================
+   * ETA
+   * =========================
+   */
 
-    const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
+  const eta = useMemo(() => {
+    if (!route.length) {
+      return null;
+    }
 
-    const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
+    let totalDistanceKm = 0;
 
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((from.latitude * Math.PI) / 180) *
-        Math.cos((to.latitude * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
+    for (let i = 1; i < route.length; i++) {
+      const [lng1, lat1] = route[i - 1];
 
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const [lng2, lat2] = route[i];
 
-    const distance = R * c;
+      totalDistanceKm += haversineDistance(lat1, lng1, lat2, lng2);
+    }
 
-    const etaMinutes = Math.max(1, Math.round((distance / 40) * 60));
+    /**
+     * average ambulance speed
+     */
+    const averageSpeed = 45;
 
-    return `${etaMinutes}-${etaMinutes + 3} min`;
-  };
+    const minutes = Math.max(
+      1,
+      Math.round((totalDistanceKm / averageSpeed) * 60),
+    );
 
-  if (loading || !userLocation) {
+    return `${minutes}-${minutes + 3} min`;
+  }, [route]);
+
+  /**
+   * =========================
+   * LOADING
+   * =========================
+   */
+
+  if (!userLocation) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" />
@@ -116,180 +125,346 @@ export const EmergencyMap = ({ activeEmergency }: Props) => {
     );
   }
 
-  const activeParamedicJS = paramedicLocation
+  /**
+   * =========================
+   * ROUTE JS
+   * =========================
+   */
+
+  const routeJS = route.length
     ? `
-      const paramedicMarker = L.marker([
-        ${paramedicLocation.latitude},
-        ${paramedicLocation.longitude}
-      ])
-      .addTo(map)
-      .bindPopup('Assigned paramedic');
+      const routeCoordinates = ${JSON.stringify(
+        route.map(([lng, lat]) => [lat, lng]),
+      )};
 
-      const routeLine = L.polyline([
-        [
-          ${userLocation.latitude},
-          ${userLocation.longitude}
-        ],
-        [
-          ${paramedicLocation.latitude},
-          ${paramedicLocation.longitude}
-        ]
-      ], {
-        color: '#0D9488',
-        weight: 4
-      }).addTo(map);
+      const routeLine = L.polyline(
+        routeCoordinates,
+        {
+          color: '#0D9488',
+          weight: 6,
+          opacity: 0.9
+        }
+      ).addTo(map);
 
-      map.fitBounds(routeLine.getBounds(), {
-        padding: [40, 40]
-      });
+      map.fitBounds(
+        routeLine.getBounds(),
+        {
+          padding: [50, 50]
+        }
+      );
     `
     : "";
 
+  /**
+   * =========================
+   * PATIENT MARKER
+   * =========================
+   */
+
+  const patientJS = patientLocation
+    ? `
+      const patientMarker = L.marker(
+        [
+          ${patientLocation.latitude},
+          ${patientLocation.longitude}
+        ]
+      )
+      .addTo(map)
+      .bindPopup('Patient');
+    `
+    : "";
+
+  /**
+   * =========================
+   * MAP HTML
+   * =========================
+   */
+
   const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
+    <!DOCTYPE html>
 
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+    <html>
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1.0"
+        />
 
-  <style>
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet/dist/leaflet.css"
+        />
 
-    #map {
-      width: 100%;
-      height: 100vh;
-    }
-
-    .leaflet-container {
-      width: 100%;
-      height: 100%;
-    }
-  </style>
-</head>
-
-<body>
-  <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <script>
-    document.addEventListener(
-      "DOMContentLoaded",
-      function () {
-        const userLat =
-          ${userLocation.latitude};
-
-        const userLng =
-          ${userLocation.longitude};
-
-        const map = L.map("map", {
-          zoomControl: false,
-        }).setView(
-          [userLat, userLng],
-          14
-        );
-
-        L.tileLayer(
-          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-          {
-            attribution:
-              "© OpenStreetMap contributors",
+        <style>
+          html,
+          body,
+          #map {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
           }
-        ).addTo(map);
 
-        L.marker([
-          userLat,
-          userLng,
-        ]).addTo(map);
-      }
-    );
-  </script>
-</body>
-</html>
-`;
+          .leaflet-control-attribution {
+            display: none;
+          }
+
+          .leaflet-control-zoom {
+            display: none;
+          }
+
+          body {
+            background: #FFFFFF;
+          }
+        </style>
+      </head>
+
+      <body>
+        <div id="map"></div>
+
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+        <script>
+          const map = L.map(
+            'map',
+            {
+              zoomControl: false
+            }
+          );
+
+          /**
+           * =========================
+           * TILES
+           * =========================
+           */
+
+          L.tileLayer(
+            'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+            {
+              maxZoom: 19
+            }
+          ).addTo(map);
+
+          /**
+           * =========================
+           * USER
+           * =========================
+           */
+
+          const userMarker = L.marker(
+            [
+              ${userLocation.latitude},
+              ${userLocation.longitude}
+            ]
+          )
+          .addTo(map)
+          .bindPopup('You');
+
+          /**
+           * =========================
+           * DEFAULT VIEW
+           * =========================
+           */
+
+          map.setView(
+            [
+              ${userLocation.latitude},
+              ${userLocation.longitude}
+            ],
+            14
+          );
+
+          /**
+           * =========================
+           * PATIENT
+           * =========================
+           */
+
+          ${patientJS}
+
+          /**
+           * =========================
+           * ROUTE
+           * =========================
+           */
+
+          ${routeJS}
+        </script>
+      </body>
+    </html>
+  `;
+
+  /**
+   * =========================
+   * RENDER
+   * =========================
+   */
 
   return (
-    <View style={styles.container}>
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ html }}
-        style={styles.map}
-        javaScriptEnabled
-        domStorageEnabled
-        mixedContentMode="always"
-      />
+    <View style={styles.wrapper}>
+      <View style={styles.container}>
+        <WebView
+          ref={webViewRef}
+          originWhitelist={["*"]}
+          source={{ html }}
+          javaScriptEnabled
+          domStorageEnabled
+          allowFileAccess
+          mixedContentMode="always"
+          style={styles.map}
+        />
+      </View>
+
+      {!!eta && (
+        <View style={styles.etaContainer}>
+          <View style={styles.etaDot} />
+
+          <View>
+            <View>
+              <Text style={styles.etaTitle}>Estimated Arrival</Text>
+
+              <Text style={styles.etaText}>{eta}</Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {isLoadingRoute && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#0D9488" />
+        </View>
+      )}
     </View>
   );
 };
 
+/**
+ * =========================
+ * HAVERSINE DISTANCE
+ * =========================
+ */
+
+const haversineDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) => {
+  const R = 6371;
+
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+};
+
 const styles = StyleSheet.create({
+  wrapper: {
+    width: "100%",
+    height: 500,
+  },
+
   container: {
-    width: 250,
-    height: 188,
-    borderRadius: 24,
+    flex: 1,
+
+    borderRadius: 28,
+
     overflow: "hidden",
+
+    backgroundColor: "#F3F4F6",
   },
 
   map: {
     flex: 1,
+
+    backgroundColor: "transparent",
   },
 
   loader: {
-    width: 250,
-    height: 188,
+    width: "100%",
+    height: 500,
+
     justifyContent: "center",
     alignItems: "center",
+  },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFill,
+
+    justifyContent: "center",
+    alignItems: "center",
+
+    backgroundColor: "rgba(255,255,255,0.35)",
   },
 
   etaContainer: {
     position: "absolute",
 
-    bottom: 10,
+    bottom: 18,
 
     alignSelf: "center",
 
+    flexDirection: "row",
+
+    alignItems: "center",
+
+    gap: 12,
+
     backgroundColor: "#FFFFFF",
 
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
 
-    paddingVertical: 8,
+    paddingVertical: 12,
 
-    borderRadius: 20,
+    borderRadius: 999,
 
     shadowColor: "#000",
 
     shadowOffset: {
-      width: 2,
-      height: 2,
+      width: 0,
+      height: 4,
     },
 
     shadowOpacity: 0.12,
 
-    shadowRadius: 6,
+    shadowRadius: 12,
 
-    elevation: 4,
+    elevation: 8,
+  },
+
+  etaDot: {
+    width: 12,
+
+    height: 12,
+
+    borderRadius: 999,
+
+    backgroundColor: "#22C55E",
+  },
+
+  etaTitle: {
+    fontSize: 12,
+
+    color: "#6B7280",
+
+    fontWeight: "500",
   },
 
   etaText: {
-    color: "#0D9488",
+    fontSize: 16,
 
-    fontWeight: "600",
+    color: "#111827",
 
-    fontSize: 14,
+    fontWeight: "700",
   },
 });

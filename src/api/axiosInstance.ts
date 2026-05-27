@@ -3,7 +3,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { router } from "expo-router";
 
 export const axiosInstance = axios.create({
-  baseURL: "http://10.0.2.2:5034/api/v1",
+  baseURL: "http://10.0.2.2:5034/api",
 });
 
 type FailedRequest = {
