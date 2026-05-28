@@ -76,7 +76,9 @@ export const EmergencyMap = ({
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-      html, body, #map { margin: 0; padding: 0; width: 100%; height: 100%; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+      #map { width: 100%; height: 100vh; }
       .leaflet-control-attribution { display: none; }
       .leaflet-control-zoom { display: none; }
     </style>
@@ -89,7 +91,8 @@ export const EmergencyMap = ({
         .setView([${normalizedUser.latitude}, ${normalizedUser.longitude}], 14);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19
+        maxZoom: 19,
+        keepBuffer: 4
       }).addTo(map);
 
       L.marker([${normalizedUser.latitude}, ${normalizedUser.longitude}])
@@ -98,6 +101,10 @@ export const EmergencyMap = ({
         .openPopup();
 
       ${patientJS}
+
+      /* WebView finalises its layout slightly after the JS runs — tell Leaflet
+         to recalculate the container size once the WebView is fully painted. */
+      setTimeout(function() { map.invalidateSize(); }, 300);
     </script>
   </body>
 </html>`;
@@ -126,7 +133,11 @@ export const EmergencyMap = ({
           javaScriptEnabled
           domStorageEnabled
           allowFileAccess
+          allowsFullscreenVideo={false}
           mixedContentMode="always"
+          cacheEnabled
+          cacheMode="LOAD_DEFAULT"
+          setSupportMultipleWindows={false}
         />
       </View>
 

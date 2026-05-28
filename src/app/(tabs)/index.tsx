@@ -23,6 +23,7 @@ import { useGetAvailableFinishReasons } from "@/api/hooks/useGetAvailableFinishR
 import { signalRService } from "@/services/signalr";
 import type { Coordinates, EmergencyAssignedPayload } from "@/types/emergency";
 import BottomSheet from "@expo/ui/community/bottom-sheet";
+import Toast from "react-native-toast-message";
 
 type Coords = {
   latitude: number;
@@ -275,7 +276,11 @@ export default function Home() {
         onSubmit={async (reason, explanation) => {
           await declineEmergency({
             reason: Number(reason),
-            reasonExplanation: explanation,
+            reasonExplanation: explanation, 
+          });
+          Toast.show({
+            type: "success",
+            text1: "Emergency declined",
           });
           resetEmergency();
         }}
@@ -288,6 +293,10 @@ export default function Home() {
           await finishEmergency({
             resolution: Number(reason),
             resolutionExplanation: explanation,
+          });
+          Toast.show({
+            type: "success",
+            text1: "Emergency finished",
           });
           resetEmergency();
         }}
