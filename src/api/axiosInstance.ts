@@ -1,9 +1,12 @@
 import { tokenStorage } from "@/store/tokenStorage";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { router } from "expo-router";
+import { Platform } from "react-native";
+
+const API_HOST = Platform.OS === "web" ? "localhost" : "10.0.2.2";
 
 export const axiosInstance = axios.create({
-  baseURL: "http://10.0.2.2:5034/api",
+  baseURL: `http://${API_HOST}:5034/api`,
 });
 
 type FailedRequest = {
@@ -70,7 +73,7 @@ axiosInstance.interceptors.response.use(
         }
 
         const response = await axios.post(
-          "http://10.0.2.2:5032/api/v1/auth/refresh",
+          `http://${API_HOST}:5032/api/v1/auth/refresh`,
           {
             refreshToken,
           },

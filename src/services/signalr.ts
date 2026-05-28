@@ -4,6 +4,7 @@ import type {
   EmergencyAssignedPayload,
   EmergencyFinishedPayload,
 } from "@/types/emergency";
+import { Platform } from "react-native";
 
 import {
   HubConnection,
@@ -19,6 +20,8 @@ export type EmergencyUpdatePayload = {
   diseases: string[];
   allergies: string[];
 };
+
+const HUB_HOST = Platform.OS === "web" ? "localhost" : "10.0.2.2";
 
 class SignalRService {
   private connection: HubConnection | null = null;
@@ -41,7 +44,7 @@ class SignalRService {
     }
 
     this.connection = new HubConnectionBuilder()
-      .withUrl("http://10.0.2.2:5034/paramedicHub", {
+      .withUrl(`http://${HUB_HOST}:5034/paramedicHub`, {
         accessTokenFactory: async () => {
           const token = await tokenStorage.getAccessToken();
           return token || "";

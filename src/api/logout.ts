@@ -1,14 +1,14 @@
 import { axiosInstance } from "@/api/axiosInstance";
 import { queryClient } from "@/config/queryClient";
+import { tokenStorage } from "@/store/tokenStorage";
 import { router } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 
 export const logout = async () => {
   try {
     /**
      * GET REFRESH TOKEN
      */
-    const refreshToken = await SecureStore.getItemAsync("refresh_token");
+    const refreshToken = await tokenStorage.getRefreshToken();
 
     /**
      * BACKEND LOGOUT
@@ -24,9 +24,7 @@ export const logout = async () => {
     /**
      * CLEAR TOKENS
      */
-    await SecureStore.deleteItemAsync("access_token");
-
-    await SecureStore.deleteItemAsync("refresh_token");
+    await tokenStorage.clearTokens();
 
     /**
      * CLEAR AXIOS AUTH HEADER

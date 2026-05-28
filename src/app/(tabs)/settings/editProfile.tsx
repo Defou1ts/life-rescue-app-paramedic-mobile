@@ -3,13 +3,59 @@ import { useUpdateProfile } from "@/api/hooks/useUpdateProfile";
 import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
-import { Host, Switch } from "@expo/ui/jetpack-compose";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Switch as RNSwitch,
+  Text,
+  View,
+} from "react-native";
 import * as yup from "yup";
+
+const Compose =
+  Platform.OS === "web"
+    ? null
+    : // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("@expo/ui/jetpack-compose");
+
+const Host: React.ComponentType<{ matchContents?: boolean; children: any }> =
+  Platform.OS === "web"
+    ? ({ children }) => children
+    : Compose.Host;
+
+const Switch: React.ComponentType<{
+  value: boolean;
+  onCheckedChange: (next: boolean) => void;
+  colors?: {
+    checkedThumbColor?: string;
+    checkedTrackColor?: string;
+    uncheckedThumbColor?: string;
+    uncheckedTrackColor?: string;
+    uncheckedBorderColor?: string;
+  };
+}> =
+  Platform.OS === "web"
+    ? ({ value, onCheckedChange, colors }) => (
+        <RNSwitch
+          value={value}
+          onValueChange={onCheckedChange}
+          trackColor={{
+            true: colors?.checkedTrackColor ?? "#66B9B4",
+            false: colors?.uncheckedTrackColor ?? "#DFE5E9",
+          }}
+          thumbColor={
+            value
+              ? colors?.checkedThumbColor ?? "#098E89"
+              : colors?.uncheckedThumbColor ?? "#66B9B4"
+          }
+        />
+      )
+    : Compose.Switch;
 
 const schema = yup.object({
   fullName: yup

@@ -57,7 +57,17 @@ export const EmergencyMap = ({
 
     const patientJS = normalizedPatient
       ? `
-        L.marker([${normalizedPatient.latitude}, ${normalizedPatient.longitude}])
+        L.circleMarker(
+          [${normalizedPatient.latitude}, ${normalizedPatient.longitude}],
+          {
+            radius: 9,
+            color: '#2563EB',
+            weight: 3,
+            opacity: 1,
+            fillColor: '#60A5FA',
+            fillOpacity: 0.95
+          }
+        )
           .addTo(map)
           .bindPopup('Patient');
 
@@ -87,6 +97,16 @@ export const EmergencyMap = ({
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+      // Ensure marker icons always load in WebView (Leaflet's default CSS uses
+      // relative URLs which can fail in React Native WebView).
+      try {
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+          iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+          shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png'
+        });
+      } catch (e) {}
+
       var map = L.map('map', { zoomControl: false })
         .setView([${normalizedUser.latitude}, ${normalizedUser.longitude}], 14);
 
@@ -95,10 +115,19 @@ export const EmergencyMap = ({
         keepBuffer: 4
       }).addTo(map);
 
-      L.marker([${normalizedUser.latitude}, ${normalizedUser.longitude}])
+      L.circleMarker(
+        [${normalizedUser.latitude}, ${normalizedUser.longitude}],
+        {
+          radius: 9,
+          color: '#047857',
+          weight: 3,
+          opacity: 1,
+          fillColor: '#34D399',
+          fillOpacity: 0.95
+        }
+      )
         .addTo(map)
-        .bindPopup('You')
-        .openPopup();
+        .bindPopup('You');
 
       ${patientJS}
 
