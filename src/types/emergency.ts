@@ -21,3 +21,7 @@ export interface EmergencyAssignedPayload {
   diseases: string[];
   allergies: string[];
 }
+
+export interface EmergencyFinishedPayload {
+  emergencyId: string;
+}

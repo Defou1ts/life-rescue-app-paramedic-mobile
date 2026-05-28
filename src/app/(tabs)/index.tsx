@@ -2,271 +2,290 @@ import { useEffect, useRef, useState } from "react";
 
 import * as Location from "expo-location";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { StyleSheet, View } from "react-native";
 
 import { AppButton } from "@/components/button";
-
-import { EmergencyMap } from "@/components/emergency-map";
-
-import { signalRService } from "@/services/signalr";
-
-import { useGetActiveEmergencyRequest } from "@/api/hooks/useGetActiveEmergencyRequest";
-import type { EmergencyAssignedPayload } from "@/types/emergency";
-
+import { DeclineSheet } from "@/components/decline-sheet/Index";
 import { EmergencyDetailsSheet } from "@/components/emergency-details-sheet";
-
+import { EmergencyMap } from "@/components/emergency-map";
 import { FinishSheet } from "@/components/finish-sheet";
 
+import { useDeclineEmergency } from "@/api/hooks/useDeclineEmergency";
+import { useFinishEmergency } from "@/api/hooks/useFinishEmergency";
+import {
+  type ActiveEmergency,
+  useGetActiveEmergencyRequest,
+} from "@/api/hooks/useGetActiveEmergencyRequest";
 import { useGetAvailableDeclineReasons } from "@/api/hooks/useGetAvailableDeclineReasons";
-
 import { useGetAvailableFinishReasons } from "@/api/hooks/useGetAvailableFinishReasons";
 
-import { useDeclineEmergency } from "@/api/hooks/useDeclineEmergency";
-
-import { useFinishEmergency } from "@/api/hooks/useFinishEmergency";
-import { DeclineSheet } from "@/components/decline-sheet/Index";
+import { signalRService } from "@/services/signalr";
+import type { Coordinates, EmergencyAssignedPayload } from "@/types/emergency";
+import BottomSheet from "@expo/ui/community/bottom-sheet";
 
 type Coords = {
   latitude: number;
   longitude: number;
 };
 
-const MOCK_LOCATION = {
-  latitude: 53.9023,
-  longitude: 27.5619,
-};
+const MOCK_LOCATION: Coords = { latitude: 53.9023, longitude: 27.5619 };
+
+const QUERY_KEY = ["getActiveEmergencyRequest"] as const;
+
+/**
+ * Maps the REST response to the unified payload shape.
+ * The API already returns fields matching EmergencyAssignedPayload,
+ * so this is a straight pass-through with null-safety guards.
+ */
+const fromActiveEmergency = (e: ActiveEmergency): EmergencyAssignedPayload => ({
+  emergencyId: e.emergencyId,
+  location: e.location,
+  initiatorName: e.initiatorName ?? "",
+  symptoms: e.symptoms ?? [],
+  diseases: e.diseases ?? [],
+  allergies: e.allergies ?? [],
+});
 
 export default function Home() {
-  const { data: activeEmergency } = useGetActiveEmergencyRequest();
+  const queryClient = useQueryClient();
+
+  const {
+    data: activeEmergency, // ActiveEmergency | null | undefined
+    isPending: isLoadingEmergency,
+    isFetched: isEmergencyFetched,
+  } = useGetActiveEmergencyRequest();
 
   const { data: declineReasons } = useGetAvailableDeclineReasons();
-
   const { data: finishReasons } = useGetAvailableFinishReasons();
-
   const declineEmergency = useDeclineEmergency();
-
   const finishEmergency = useFinishEmergency();
-
+  const sheetRef = useRef<BottomSheet>(null);
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
 
-  const [patientLocation, setPatientLocation] = useState<Coords | null>(null);
-
-  const [emergencyPayload, setEmergencyPayload] =
+  /**
+   * Emergency received via SignalR ReceiveEmergencyAssigned.
+   * Contains full data (diseases, allergies, symptoms).
+   */
+  const [signalREmergency, setSignalREmergency] =
     useState<EmergencyAssignedPayload | null>(null);
 
-  const [emergencyMode, setEmergencyMode] = useState(false);
-
-  const [detailsVisible, setDetailsVisible] = useState(false);
+  /**
+   * Patient location that updates from ReceiveEmergencyUpdate messages.
+   * When null, falls back to emergency.location.
+   */
+  const [patientLocationOverride, setPatientLocationOverride] =
+    useState<Coordinates | null>(null);
 
   const [declineVisible, setDeclineVisible] = useState(false);
-
   const [finishVisible, setFinishVisible] = useState(false);
 
   const userLocationRef = useRef<Coords | null>(null);
-
-  userLocationRef.current = userLocation;
-
-  const initialize = async () => {
-    let coords: Coords;
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-
-    if (status !== "granted") {
-      coords = MOCK_LOCATION;
-    } else {
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      coords = {
-        latitude: location.coords.latitude,
-
-        longitude: location.coords.longitude,
-      };
-    }
-
-    setUserLocation(coords);
-
-    Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High,
-
-        timeInterval: 3000,
-
-        distanceInterval: 5,
-      },
-
-      (location) => {
-        setUserLocation({
-          latitude: location.coords.latitude,
-
-          longitude: location.coords.longitude,
-        });
-      },
-    );
-  };
+  const subscribedIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const initTimeoutId = setTimeout(() => {
-      void initialize();
-    }, 0);
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
 
-    signalRService.onReceiveEmergencyAssigned = async (payload) => {
-      setEmergencyPayload(payload);
-      setPatientLocation(payload.location);
-      setEmergencyMode(true);
+  // ─── DERIVED STATE ────────────────────────────────────────────────────────
+  //
+  // emergency is derived purely at render time — no useEffect needed.
+  // Priority: SignalR message (full data) > API response (partial data).
+  //
+  const apiEmergency: EmergencyAssignedPayload | null = activeEmergency
+    ? fromActiveEmergency(activeEmergency)
+    : null;
 
-      try {
-        await signalRService.subscribeToEmergency(payload.emergencyId);
-      } catch (error) {
-        console.error("Failed to subscribe to emergency:", error);
+  const emergency: EmergencyAssignedPayload | null =
+    signalREmergency ?? apiEmergency;
+
+  const patientLocation: Coordinates | null =
+    patientLocationOverride ?? emergency?.location ?? null;
+
+  const hasEmergency = emergency !== null;
+
+  // Show "Waiting" only after the initial fetch has completed and no emergency
+  const isWaiting = isEmergencyFetched && !hasEmergency;
+
+  // ─── RESET ────────────────────────────────────────────────────────────────
+  const resetEmergency = () => {
+    subscribedIdRef.current = null;
+    setSignalREmergency(null);
+    setPatientLocationOverride(null);
+    setDeclineVisible(false);
+    setFinishVisible(false);
+    // Clear cache so next render sees null immediately (no stale assignment)
+    queryClient.setQueryData(QUERY_KEY, null);
+  };
+
+  // ─── GPS ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let watchSub: Location.LocationSubscription | null = null;
+    let cancelled = false;
+
+    const init = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      let coords: Coords;
+      if (status !== "granted") {
+        coords = MOCK_LOCATION;
+      } else {
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+        coords = {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        };
       }
+
+      if (cancelled) return;
+      setUserLocation(coords);
+
+      watchSub = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 3000,
+          distanceInterval: 5,
+        },
+        (loc) => {
+          setUserLocation({
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          });
+        },
+      );
     };
 
-    signalRService.onReceiveEmergencyUpdate = (payload) => {
-      setPatientLocation(payload.location);
-    };
-
-    const connect = async () => {
-      try {
-        await signalRService.startConnection();
-      } catch (error) {
-        console.error("Failed to connect to SignalR:", error);
-      }
-    };
-
-    void connect();
-
+    void init();
     return () => {
-      clearTimeout(initTimeoutId);
-      signalRService.onReceiveEmergencyAssigned = null;
-      signalRService.onReceiveEmergencyUpdate = null;
-      void signalRService.stopConnection();
+      cancelled = true;
+      watchSub?.remove();
     };
   }, []);
 
+  // ─── LOCATION HEARTBEAT (always, every 30 s) ─────────────────────────────
   useEffect(() => {
-    if (!emergencyMode) {
-      return;
-    }
+    const id = setInterval(() => {
+      const loc = userLocationRef.current;
+      if (!loc) return;
+      void signalRService
+        .sendLocationUpdate(loc)
+        .catch((err) => console.error("sendLocationUpdate failed:", err));
+    }, 30_000);
 
-    const sendLocation = () => {
-      const location = userLocationRef.current;
+    return () => clearInterval(id);
+  }, []);
 
-      if (!location) {
-        return;
-      }
-
-      void signalRService.sendLocationUpdate(location).catch((error) => {
-        console.error("Failed to send location update:", error);
-      });
+  // ─── SIGNALR SETUP ────────────────────────────────────────────────────────
+  useEffect(() => {
+    signalRService.onReceiveEmergencyAssigned = (payload) => {
+      setSignalREmergency(payload);
+      // Treat assignment message location as the first known patient position
+      setPatientLocationOverride(payload.location);
     };
 
-    sendLocation();
+    signalRService.onReceiveEmergencyUpdate = (payload) => {
+      console.log("Received EmergencyUpdate:", payload);
+      setPatientLocationOverride(payload.location);
+    };
 
-    const intervalId = setInterval(sendLocation, 30_000);
+    signalRService.onReceiveFinishedEmergency = () => {
+      resetEmergency();
+    };
 
-    return () => clearInterval(intervalId);
-  }, [emergencyMode]);
+    void signalRService
+      .startConnection()
+      .catch((err) => console.error("SignalR connect failed:", err));
 
-  const startEmergency = () => {
-    setEmergencyMode(true);
-  };
+    return () => {
+      signalRService.onReceiveEmergencyAssigned = null;
+      signalRService.onReceiveEmergencyUpdate = null;
+      signalRService.onReceiveFinishedEmergency = null;
+      void signalRService.stopConnection();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
+  // ─── SUBSCRIBE TO EMERGENCY ───────────────────────────────────────────────
+  // Fires whenever the active emergency ID changes (from API or SignalR).
+  // Calls SubscribeToEmergency once per unique emergencyId.
+  useEffect(() => {
+    const id = emergency?.emergencyId;
+    if (!id) return;
+    if (subscribedIdRef.current === id) return;
+
+    subscribedIdRef.current = id;
+    void signalRService
+      .subscribeToEmergency(id)
+      .catch((err) => console.error("subscribeToEmergency failed:", err));
+  }, [emergency?.emergencyId]);
+
+  // ─── RENDER ───────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <EmergencyMap
         userLocation={userLocation}
-        patientLocation={emergencyMode ? patientLocation : null}
+        patientLocation={patientLocation}
+        waitingForEmergency={isWaiting}
+        isLoading={isLoadingEmergency}
       />
 
-      <View
-        style={{
-          marginTop: 24,
-        }}
-      >
-        <AppButton
-          type="primary"
-          disabled={!activeEmergency}
-          onPress={startEmergency}
-        >
-          Active Emergency
-        </AppButton>
+      {hasEmergency && (
+        <View style={styles.actions}>
+          <AppButton type="outline" onPress={() => sheetRef.current?.expand()}>
+            Details
+          </AppButton>
 
-        {emergencyMode && (
-          <>
-            <AppButton
-              type="outline"
-              containerStyle={{
-                marginTop: 16,
-              }}
-              onPress={() => setDetailsVisible(true)}
-            >
-              Details
-            </AppButton>
+          <AppButton
+            type="outline"
+            containerStyle={styles.declineButton}
+            textStyle={styles.declineText}
+            onPress={() => setDeclineVisible(true)}
+          >
+            Decline
+          </AppButton>
 
-            <AppButton
-              type="outline"
-              containerStyle={{
-                marginTop: 16,
+          <AppButton type="primary" onPress={() => setFinishVisible(true)}>
+            Finish
+          </AppButton>
+        </View>
+      )}
 
-                backgroundColor: "#DC2626",
-              }}
-              onPress={() => setDeclineVisible(true)}
-            >
-              Decline
-            </AppButton>
-
-            <AppButton
-              type="primary"
-              containerStyle={{
-                marginTop: 16,
-              }}
-              onPress={() => setFinishVisible(true)}
-            >
-              Finish
-            </AppButton>
-          </>
-        )}
-      </View>
-
-      {detailsVisible && emergencyPayload && (
+      {emergency && (
         <EmergencyDetailsSheet
-          payload={emergencyPayload}
+          sheetRef={sheetRef}
+          payload={emergency}
           symptomTree={
-            emergencyPayload.symptoms.length > 0
-              ? emergencyPayload.symptoms
-              : activeEmergency?.symptomTree || []
+            (emergency.symptoms ?? []).length > 0
+              ? emergency.symptoms
+              : (activeEmergency?.symptoms ?? [])
           }
         />
       )}
 
       {declineVisible && (
         <DeclineSheet
-          reasons={declineReasons || []}
+          reasons={declineReasons ?? []}
           onSubmit={async (reason, explanation) => {
             await declineEmergency({
               reason: Number(reason),
-
               reasonExplanation: explanation,
             });
-
-            setDeclineVisible(false);
+            resetEmergency();
           }}
         />
       )}
 
       {finishVisible && (
         <FinishSheet
-          reasons={finishReasons || []}
+          reasons={finishReasons ?? []}
           onSubmit={async (reason, explanation) => {
             await finishEmergency({
               resolution: Number(reason),
-
               resolutionExplanation: explanation,
             });
-
-            setFinishVisible(false);
+            resetEmergency();
           }}
         />
       )}
@@ -277,7 +296,17 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-
     padding: 20,
+  },
+  actions: {
+    marginTop: 24,
+    gap: 16,
+  },
+  declineButton: {
+    backgroundColor: "#DC2626",
+    borderColor: "#DC2626",
+  },
+  declineText: {
+    color: "#FFFFFF",
   },
 });
