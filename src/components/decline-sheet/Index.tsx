@@ -1,5 +1,4 @@
-import { BottomSheetView } from "@expo/ui/community/bottom-sheet";
-import BottomSheet from "@gorhom/bottom-sheet";
+import BottomSheet, { BottomSheetView } from "@expo/ui/community/bottom-sheet";
 import {
   FlatList,
   Text,
@@ -13,7 +12,7 @@ import { AppButton } from "../button";
 
 type Props = {
   reasons: any[];
-
+  sheetRef: React.Ref<BottomSheet>;
   onSubmit: (
     reason: string,
 
@@ -23,7 +22,7 @@ type Props = {
 
 export const DeclineSheet = ({
   reasons,
-
+  sheetRef,
   onSubmit,
 }: Props) => {
   const [selected, setSelected] = useState("");
@@ -31,8 +30,19 @@ export const DeclineSheet = ({
   const [explanation, setExplanation] = useState("");
 
   return (
-    <BottomSheet snapPoints={["50%", "90%"]}>
-      <BottomSheetView>
+    <BottomSheet
+      ref={sheetRef}
+      snapPoints={["50%", "100%"]}
+      index={-1}
+      onChange={(index) => {
+        console.log("onChange", index);
+      }}
+      onClose={() => {
+        console.log("closed");
+      }}
+      enablePanDownToClose
+    >
+      <BottomSheetView style={{ flex: 1 }}>
         <View
           style={{
             padding: 24,

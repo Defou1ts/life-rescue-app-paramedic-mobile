@@ -60,7 +60,11 @@ export default function Home() {
   const { data: finishReasons } = useGetAvailableFinishReasons();
   const declineEmergency = useDeclineEmergency();
   const finishEmergency = useFinishEmergency();
+
   const sheetRef = useRef<BottomSheet>(null);
+  const declineSheetRef = useRef<BottomSheet>(null);
+  const finishSheetRef = useRef<BottomSheet>(null);
+
   const [userLocation, setUserLocation] = useState<Coords | null>(null);
 
   /**
@@ -76,9 +80,6 @@ export default function Home() {
    */
   const [patientLocationOverride, setPatientLocationOverride] =
     useState<Coordinates | null>(null);
-
-  const [declineVisible, setDeclineVisible] = useState(false);
-  const [finishVisible, setFinishVisible] = useState(false);
 
   const userLocationRef = useRef<Coords | null>(null);
   const subscribedIdRef = useRef<string | null>(null);
@@ -112,8 +113,9 @@ export default function Home() {
     subscribedIdRef.current = null;
     setSignalREmergency(null);
     setPatientLocationOverride(null);
-    setDeclineVisible(false);
-    setFinishVisible(false);
+    declineSheetRef.current?.close();
+    sheetRef.current?.close();
+    finishSheetRef.current?.close();
     // Clear cache so next render sees null immediately (no stale assignment)
     queryClient.setQueryData(QUERY_KEY, null);
   };
@@ -241,12 +243,15 @@ export default function Home() {
             type="outline"
             containerStyle={styles.declineButton}
             textStyle={styles.declineText}
-            onPress={() => setDeclineVisible(true)}
+            onPress={() => declineSheetRef.current?.expand()}
           >
             Decline
           </AppButton>
 
-          <AppButton type="primary" onPress={() => setFinishVisible(true)}>
+          <AppButton
+            type="primary"
+            onPress={() => finishSheetRef.current?.expand()}
+          >
             Finish
           </AppButton>
         </View>
@@ -264,31 +269,29 @@ export default function Home() {
         />
       )}
 
-      {declineVisible && (
-        <DeclineSheet
-          reasons={declineReasons ?? []}
-          onSubmit={async (reason, explanation) => {
-            await declineEmergency({
-              reason: Number(reason),
-              reasonExplanation: explanation,
-            });
-            resetEmergency();
-          }}
-        />
-      )}
+      <DeclineSheet
+        sheetRef={declineSheetRef}
+        reasons={declineReasons ?? []}
+        onSubmit={async (reason, explanation) => {
+          await declineEmergency({
+            reason: Number(reason),
+            reasonExplanation: explanation,
+          });
+          resetEmergency();
+        }}
+      />
 
-      {finishVisible && (
-        <FinishSheet
-          reasons={finishReasons ?? []}
-          onSubmit={async (reason, explanation) => {
-            await finishEmergency({
-              resolution: Number(reason),
-              resolutionExplanation: explanation,
-            });
-            resetEmergency();
-          }}
-        />
-      )}
+      <FinishSheet
+        sheetRef={finishSheetRef}
+        reasons={finishReasons ?? []}
+        onSubmit={async (reason, explanation) => {
+          await finishEmergency({
+            resolution: Number(reason),
+            resolutionExplanation: explanation,
+          });
+          resetEmergency();
+        }}
+      />
     </View>
   );
 }

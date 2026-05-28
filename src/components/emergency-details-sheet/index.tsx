@@ -12,7 +12,11 @@ type Props = {
   sheetRef: React.Ref<BottomSheet>;
 };
 
-export const EmergencyDetailsSheet = ({ payload, symptomTree,sheetRef }: Props) => {
+export const EmergencyDetailsSheet = ({
+  payload,
+  symptomTree,
+  sheetRef,
+}: Props) => {
   const diseases = payload.diseases ?? [];
   const allergies = payload.allergies ?? [];
 

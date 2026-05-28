@@ -174,7 +174,7 @@ const calculateETA = (from: Coordinates, to: Coordinates): string => {
 const styles = StyleSheet.create({
   wrapper: {
     width: "100%",
-    height: 500,
+    height: 400,
   },
   container: {
     flex: 1,
