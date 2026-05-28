@@ -124,7 +124,7 @@ export const EmergencyMap = ({
     );
   }
   return (
-    <View style={styles.wrapper}>
+    <View style={waitingForEmergency ? styles.waitingWrapper : styles.wrapper}>
       <View style={styles.container}>
         <WebView
           originWhitelist={["*"]}
@@ -158,8 +158,9 @@ export const EmergencyMap = ({
       )}
 
       {waitingForEmergency && !isLoading && (
-        <View style={styles.statusOverlay}>
-          <Text style={styles.waitingText}>Waiting for Emergency...</Text>
+        <View style={styles.waitingBadge}>
+          <View style={styles.activeDot} />
+          <Text style={styles.waitingText}>Waiting for Emergency</Text>
         </View>
       )}
     </View>
@@ -187,6 +188,10 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 400,
   },
+  waitingWrapper: {
+    width: "100%",
+    height: "100%",
+  },
   container: {
     flex: 1,
     borderRadius: 28,
@@ -209,10 +214,33 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.78)",
     borderRadius: 28,
   },
+  waitingBadge: {
+    position: "absolute",
+    top: 14,
+    left: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  activeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: "#22C55E",
+  },
   waitingText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#374151",
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0D9488",
   },
   etaContainer: {
     position: "absolute",
