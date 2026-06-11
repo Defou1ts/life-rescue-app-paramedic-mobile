@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 
+import { useDrivingRoute } from "@/hooks/useDrivingRoute";
+import type { Coordinates } from "@/types/emergency";
+import { formatDrivingEta } from "@/utils/fetchDrivingRoute";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
-
-type Coordinates = {
-  latitude: number;
-  longitude: number;
-};
 
 type Props = {
   userLocation: Coordinates | null;
@@ -22,6 +20,22 @@ type Props = {
  */
 const roundCoord = (v: number, decimals = 5) =>
   Math.round(v * 10 ** decimals) / 10 ** decimals;
+
+const fallbackEta = (from: Coordinates, to: Coordinates): string => {
+  const R = 6371;
+  const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
+  const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((from.latitude * Math.PI) / 180) *
+      Math.cos((to.latitude * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distance = R * c;
+  const minutes = Math.max(1, Math.round((distance / 40) * 60));
+  return `${minutes}-${minutes + 3} min`;
+};
 
 export const EmergencyMap = ({
   userLocation,
@@ -47,16 +61,49 @@ export const EmergencyMap = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientLocation?.latitude, patientLocation?.longitude]);
 
+  const { route } = useDrivingRoute(normalizedUser, normalizedPatient);
+
+  const routeKey = useMemo(() => {
+    if (!route) {
+      return null;
+    }
+
+    const first = route.coordinates[0];
+    const last = route.coordinates[route.coordinates.length - 1];
+
+    return `${route.coordinates.length}:${first.latitude},${first.longitude}:${last.latitude},${last.longitude}:${route.durationSeconds}`;
+  }, [route]);
+
   const estimatedArrival =
     normalizedUser && normalizedPatient
-      ? calculateETA(normalizedUser, normalizedPatient)
+      ? route
+        ? formatDrivingEta(route.durationSeconds)
+        : fallbackEta(normalizedUser, normalizedPatient)
       : null;
 
   const html = useMemo(() => {
     if (!normalizedUser) return null;
 
     const patientJS = normalizedPatient
-      ? `
+      ? (() => {
+          const routeCoords =
+            route && route.coordinates.length >= 2
+              ? route.coordinates.map(({ latitude, longitude }) => [
+                  latitude,
+                  longitude,
+                ])
+              : [
+                  [
+                    normalizedUser.latitude,
+                    normalizedUser.longitude,
+                  ],
+                  [
+                    normalizedPatient.latitude,
+                    normalizedPatient.longitude,
+                  ],
+                ];
+
+          return `
         L.circleMarker(
           [${normalizedPatient.latitude}, ${normalizedPatient.longitude}],
           {
@@ -71,13 +118,16 @@ export const EmergencyMap = ({
           .addTo(map)
           .bindPopup('Patient');
 
-        var routeLine = L.polyline([
-          [${normalizedUser.latitude}, ${normalizedUser.longitude}],
-          [${normalizedPatient.latitude}, ${normalizedPatient.longitude}]
-        ], { color: '#0D9488', weight: 5, opacity: 0.9 }).addTo(map);
+        var routeCoords = ${JSON.stringify(routeCoords)};
+        var routeLine = L.polyline(routeCoords, {
+          color: '#0D9488',
+          weight: 5,
+          opacity: 0.9
+        }).addTo(map);
 
         map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
-      `
+      `;
+        })()
       : "";
 
     return `<!DOCTYPE html>
@@ -97,8 +147,6 @@ export const EmergencyMap = ({
     <div id="map"></div>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-      // Ensure marker icons always load in WebView (Leaflet's default CSS uses
-      // relative URLs which can fail in React Native WebView).
       try {
         L.Icon.Default.mergeOptions({
           iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -131,8 +179,6 @@ export const EmergencyMap = ({
 
       ${patientJS}
 
-      /* WebView finalises its layout slightly after the JS runs — tell Leaflet
-         to recalculate the container size once the WebView is fully painted. */
       setTimeout(function() { map.invalidateSize(); }, 300);
     </script>
   </body>
@@ -143,6 +189,7 @@ export const EmergencyMap = ({
     normalizedUser?.longitude,
     normalizedPatient?.latitude,
     normalizedPatient?.longitude,
+    routeKey,
   ]);
 
   if (!html) {
@@ -194,22 +241,6 @@ export const EmergencyMap = ({
       )}
     </View>
   );
-};
-
-const calculateETA = (from: Coordinates, to: Coordinates): string => {
-  const R = 6371;
-  const dLat = ((to.latitude - from.latitude) * Math.PI) / 180;
-  const dLon = ((to.longitude - from.longitude) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((from.latitude * Math.PI) / 180) *
-      Math.cos((to.latitude * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const distance = R * c;
-  const minutes = Math.max(1, Math.round((distance / 40) * 60));
-  return `${minutes}-${minutes + 3} min`;
 };
 
 const styles = StyleSheet.create({

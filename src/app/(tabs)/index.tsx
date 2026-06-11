@@ -22,6 +22,7 @@ import { useGetAvailableFinishReasons } from "@/api/hooks/useGetAvailableFinishR
 
 import { signalRService } from "@/services/signalr";
 import type { Coordinates, EmergencyAssignedPayload } from "@/types/emergency";
+import { mergeEmergencyUpdate } from "@/utils/mergeEmergencyUpdate";
 import BottomSheet from "@expo/ui/community/bottom-sheet";
 import Toast from "react-native-toast-message";
 
@@ -189,8 +190,37 @@ export default function Home() {
     };
 
     signalRService.onReceiveEmergencyUpdate = (payload) => {
-      console.log("Received EmergencyUpdate:", payload);
       setPatientLocationOverride(payload.location);
+
+      setSignalREmergency((prev) => {
+        const cached = queryClient.getQueryData<ActiveEmergency | null>(
+          QUERY_KEY,
+        );
+        const base =
+          prev ?? (cached ? fromActiveEmergency(cached) : null);
+        if (!base || base.emergencyId !== payload.emergencyId) {
+          return prev;
+        }
+        return mergeEmergencyUpdate(base, payload);
+      });
+
+      queryClient.setQueryData<ActiveEmergency | null>(
+        QUERY_KEY,
+        (old) => {
+          if (!old || old.emergencyId !== payload.emergencyId) {
+            return old;
+          }
+          const merged = mergeEmergencyUpdate(fromActiveEmergency(old), payload);
+          return {
+            ...old,
+            location: merged.location,
+            initiatorName: merged.initiatorName,
+            symptoms: merged.symptoms,
+            diseases: merged.diseases,
+            allergies: merged.allergies,
+          };
+        },
+      );
     };
 
     signalRService.onReceiveFinishedEmergency = () => {
@@ -219,9 +249,21 @@ export default function Home() {
     if (subscribedIdRef.current === id) return;
 
     subscribedIdRef.current = id;
-    void signalRService
-      .subscribeToEmergency(id)
-      .catch((err) => console.error("subscribeToEmergency failed:", err));
+
+    const attempt = (retriesLeft: number) => {
+      void signalRService
+        .subscribeToEmergency(id)
+        .catch((err) => {
+          console.error("subscribeToEmergency failed:", err);
+          if (retriesLeft > 0 && subscribedIdRef.current === id) {
+            setTimeout(() => attempt(retriesLeft - 1), 3_000);
+          } else {
+            subscribedIdRef.current = null;
+          }
+        });
+    };
+
+    attempt(3);
   }, [emergency?.emergencyId]);
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
@@ -262,11 +304,7 @@ export default function Home() {
         <EmergencyDetailsSheet
           sheetRef={sheetRef}
           payload={emergency}
-          symptomTree={
-            (emergency.symptoms ?? []).length > 0
-              ? emergency.symptoms
-              : (activeEmergency?.symptoms ?? [])
-          }
+          symptomTree={emergency.symptoms ?? []}
         />
       )}
 
@@ -276,7 +314,7 @@ export default function Home() {
         onSubmit={async (reason, explanation) => {
           await declineEmergency({
             reason: Number(reason),
-            reasonExplanation: explanation, 
+            reasonExplanation: explanation,
           });
           Toast.show({
             type: "success",

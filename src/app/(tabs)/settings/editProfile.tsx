@@ -1,61 +1,20 @@
-import { useProfile } from "@/api/hooks/useProfile";
+"use no memo";
+
+import { useProfile, type ProfileResponse } from "@/api/hooks/useProfile";
 import { useUpdateProfile } from "@/api/hooks/useUpdateProfile";
 import { AppText } from "@/components/app-text";
 import { AppButton } from "@/components/button";
 import { Input } from "@/components/input";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { useRouter } from "expo-router";
-import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import {
   ActivityIndicator,
-  Platform,
   StyleSheet,
-  Switch as RNSwitch,
+  Switch,
   Text,
   View,
 } from "react-native";
 import * as yup from "yup";
-
-const Compose =
-  Platform.OS === "web"
-    ? null
-    : // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("@expo/ui/jetpack-compose");
-
-const Host: React.ComponentType<{ matchContents?: boolean; children: any }> =
-  Platform.OS === "web"
-    ? ({ children }) => children
-    : Compose.Host;
-
-const Switch: React.ComponentType<{
-  value: boolean;
-  onCheckedChange: (next: boolean) => void;
-  colors?: {
-    checkedThumbColor?: string;
-    checkedTrackColor?: string;
-    uncheckedThumbColor?: string;
-    uncheckedTrackColor?: string;
-    uncheckedBorderColor?: string;
-  };
-}> =
-  Platform.OS === "web"
-    ? ({ value, onCheckedChange, colors }) => (
-        <RNSwitch
-          value={value}
-          onValueChange={onCheckedChange}
-          trackColor={{
-            true: colors?.checkedTrackColor ?? "#66B9B4",
-            false: colors?.uncheckedTrackColor ?? "#DFE5E9",
-          }}
-          thumbColor={
-            value
-              ? colors?.checkedThumbColor ?? "#098E89"
-              : colors?.uncheckedThumbColor ?? "#66B9B4"
-          }
-        />
-      )
-    : Compose.Switch;
 
 const schema = yup.object({
   fullName: yup
@@ -75,33 +34,35 @@ const schema = yup.object({
 });
 
 type FormValues = yup.InferType<typeof schema>;
-export default function EditProfile() {
-  const { data, isLoading, isError } = useProfile();
 
+function profileToFormValues(profile: ProfileResponse): FormValues {
+  return {
+    fullName: `${profile.name} ${profile.lastName}`.trim(),
+    phoneNumber: profile.phoneNumber ?? "",
+    isTwoFactorEnabled: Boolean(profile.isTwoFactorEnabled),
+  };
+}
+
+type EditProfileFormProps = {
+  profile: ProfileResponse;
+};
+
+function EditProfileForm({ profile }: EditProfileFormProps) {
   const { mutate, isPending } = useUpdateProfile();
-  const router = useRouter();
+
   const {
-    control,
     handleSubmit,
     formState: { errors },
-    reset,
+    setValue,
+    watch,
   } = useForm<FormValues>({
     resolver: yupResolver(schema),
-    defaultValues: {
-      fullName: "",
-      phoneNumber: "",
-      isTwoFactorEnabled: false,
-    },
+    defaultValues: profileToFormValues(profile),
   });
 
-  useEffect(() => {
-    console.log(data);
-    reset({
-      fullName: data ? `${data.name} ${data.lastName}` : "",
-      phoneNumber: data?.phoneNumber ?? "",
-      isTwoFactorEnabled: data?.isTwoFactorEnabled ?? false,
-    });
-  }, [data]);
+  const fullName = watch("fullName");
+  const phoneNumber = watch("phoneNumber");
+  const isTwoFactorEnabled = watch("isTwoFactorEnabled");
 
   const onSubmit = (values: FormValues) => {
     const [firstName, ...rest] = values.fullName.trim().split(" ");
@@ -115,6 +76,74 @@ export default function EditProfile() {
       isTwoFactorEnabled: values.isTwoFactorEnabled,
     });
   };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.contentWrapper}>
+        <View style={styles.inputsWrapper}>
+          <View>
+            <Input
+              editable={false}
+              value={profile.email ?? ""}
+              placeholder="Enter Email"
+            />
+          </View>
+
+          <View>
+            <Input
+              value={fullName}
+              onChangeText={(text) =>
+                setValue("fullName", text, { shouldDirty: true })
+              }
+              placeholder="Enter First Name and Last Name"
+            />
+            {errors.fullName && (
+              <Text style={styles.error}>{errors.fullName.message}</Text>
+            )}
+          </View>
+
+          <View>
+            <Input
+              value={phoneNumber}
+              onChangeText={(text) =>
+                setValue("phoneNumber", text, { shouldDirty: true })
+              }
+              placeholder="Enter Phone Number"
+              keyboardType="phone-pad"
+            />
+            {errors.phoneNumber && (
+              <Text style={styles.error}>{errors.phoneNumber.message}</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.switchWrapper}>
+          <AppText>Two Factor Authentication</AppText>
+          <Switch
+            value={isTwoFactorEnabled}
+            onValueChange={(next) =>
+              setValue("isTwoFactorEnabled", next, { shouldDirty: true })
+            }
+            trackColor={{ true: "#66B9B4", false: "#DFE5E9" }}
+            thumbColor={isTwoFactorEnabled ? "#098E89" : "#66B9B4"}
+          />
+        </View>
+
+        <AppButton
+          containerStyle={styles.save}
+          type="primary"
+          onPress={handleSubmit(onSubmit)}
+          disabled={isPending}
+        >
+          {isPending ? "Saving..." : "Save"}
+        </AppButton>
+      </View>
+    </View>
+  );
+}
+
+export default function EditProfile() {
+  const { data, isLoading, isError } = useProfile();
 
   if (isLoading) {
     return (
@@ -132,92 +161,7 @@ export default function EditProfile() {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.contentWrapper}>
-        <View style={styles.inputsWrapper}>
-          <View>
-            <Input
-              editable={false}
-              value={data.email ?? ""}
-              placeholder="Enter Email"
-            />
-          </View>
-
-          <Controller
-            control={control}
-            name="fullName"
-            render={({ field: { onChange, value } }) => (
-              <Input
-                value={String(value ?? "")}
-                onChangeText={onChange}
-                placeholder="Enter First Name and Last Name"
-              />
-            )}
-          />
-
-          {errors.fullName && (
-            <Text style={styles.error}>{errors.fullName.message}</Text>
-          )}
-
-          <View>
-            <Controller
-              control={control}
-              name="phoneNumber"
-              render={({ field: { onChange, value } }) => (
-                <Input
-                  value={String(value ?? "")}
-                  onChangeText={onChange}
-                  placeholder="Enter Phone Number"
-                />
-              )}
-            />
-
-            {errors.phoneNumber && (
-              <Text style={styles.error}>{errors.phoneNumber.message}</Text>
-            )}
-          </View>
-        </View>
-
-        <Controller
-          control={control}
-          name="isTwoFactorEnabled"
-          render={({ field: { onChange, value } }) => (
-            <View style={styles.switchWrapper}>
-              <AppText>Two Factor Authentication</AppText>
-
-              <Host matchContents>
-                <Switch
-                  value={value}
-                  onCheckedChange={onChange}
-                  colors={{
-                    checkedThumbColor: "#098E89",
-                    checkedTrackColor: "#66B9B4",
-                    uncheckedThumbColor: "#66B9B4",
-                    uncheckedTrackColor: "#DFE5E9",
-                    uncheckedBorderColor: "#098E89",
-                  }}
-                />
-              </Host>
-            </View>
-          )}
-        />
-
-
-
-
-
-        <AppButton
-          containerStyle={styles.save}
-          type="primary"
-          onPress={handleSubmit(onSubmit)}
-          disabled={isPending}
-        >
-          {isPending ? "Saving..." : "Save"}
-        </AppButton>
-      </View>
-    </View>
-  );
+  return <EditProfileForm key={data.email} profile={data} />;
 }
 
 export const styles = StyleSheet.create({

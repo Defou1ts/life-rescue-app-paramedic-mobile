@@ -1,13 +1,22 @@
+import { API_BASE_URL } from "@/api/apiHost";
+import { refreshAccessToken } from "@/api/refreshAccessToken";
 import { tokenStorage } from "@/store/tokenStorage";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { router } from "expo-router";
-import { Platform } from "react-native";
-
-const API_HOST = Platform.OS === "web" ? "localhost" : "10.0.2.2";
 
 export const axiosInstance = axios.create({
-  baseURL: `http://${API_HOST}:5034/api`,
+  baseURL: API_BASE_URL,
 });
+
+const PUBLIC_AUTH_PATHS = ["/auth/login", "/profile/password/recovery"] as const;
+
+function requestUrl(config: InternalAxiosRequestConfig): string {
+  return config.url ?? "";
+}
+
+function isPublicAuthRequest(config: InternalAxiosRequestConfig): boolean {
+  const url = requestUrl(config);
+  return PUBLIC_AUTH_PATHS.some((path) => url.includes(path));
+}
 
 type FailedRequest = {
   resolve: (token: string) => void;
@@ -31,6 +40,10 @@ const processQueue = (error: unknown, token: string | null = null) => {
 
 axiosInstance.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    if (isPublicAuthRequest(config)) {
+      return config;
+    }
+
     const token = await tokenStorage.getAccessToken();
 
     if (token) {
@@ -49,7 +62,11 @@ axiosInstance.interceptors.response.use(
       _retry?: boolean;
     };
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !isPublicAuthRequest(originalRequest)
+    ) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({
@@ -66,35 +83,15 @@ axiosInstance.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = await tokenStorage.getRefreshToken();
+        const accessToken = await refreshAccessToken();
 
-        if (!refreshToken) {
-          throw new Error("No refresh token");
-        }
+        processQueue(null, accessToken);
 
-        const response = await axios.post(
-          `http://${API_HOST}:5032/api/v1/auth/refresh`,
-          {
-            refreshToken,
-          },
-        );
-
-        const { access_token, refresh_token } = response.data;
-
-        await tokenStorage.setTokens(access_token, refresh_token);
-
-        processQueue(null, access_token);
-
-        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
 
         return axiosInstance(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-
-        await tokenStorage.clearTokens();
-
-        router.replace("/signIn");
-
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

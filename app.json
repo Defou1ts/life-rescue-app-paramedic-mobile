@@ -17,7 +17,10 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_FINE_LOCATION"],
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
@@ -48,7 +51,6 @@
           "androidGoogleMapsApiKey": "AIzaSyCstVsi6f2OYl9ayRo8YKlVsigtamACL9w"
         }
       ],
-
       "expo-font",
       "expo-secure-store",
       "expo-image",
@@ -58,6 +60,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5baf6f9b-e9eb-4de5-8d27-9362853dde70"
+      }
     }
   }
 }

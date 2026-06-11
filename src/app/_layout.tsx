@@ -2,7 +2,12 @@ import { queryClient } from "@/config/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import "react-native-gesture-handler";
+import { LogBox } from "react-native";
 import Toast from "react-native-toast-message";
+
+if (__DEV__) {
+  LogBox.ignoreAllLogs();
+}
 export const ROOT_SCREEN_NAMES = {
   INDEX: "index",
   SIGN_IN: "signIn",
