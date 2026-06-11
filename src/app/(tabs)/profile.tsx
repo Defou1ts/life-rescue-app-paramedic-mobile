@@ -1,12 +1,20 @@
 import { useProfile } from "@/api/hooks/useProfile";
 import { Input } from "@/components/input";
+import { useFocusEffect } from "expo-router";
 import { Image } from "expo-image";
+import { useCallback } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 const Logo = require("@/assets/images/logo.png");
 
 export default function PRofile() {
-  const { data, isLoading } = useProfile();
+  const { data, isLoading, refetch } = useProfile();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   if (isLoading || !data) {
     return (
